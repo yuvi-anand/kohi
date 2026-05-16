@@ -1,0 +1,16 @@
+export const Colors = {
+  espresso: '#1A0A00',
+  roast: '#2C1810',
+  caramel: '#C87941',
+  latte: '#D4A96A',
+  cream: '#FAF8F5',
+  foam: '#F5EDE0',
+  milk: '#E8D5B7',
+  muted: '#8B7355',
+  white: '#FFFFFF',
+  error: '#D4463B',
+  success: '#4E9F6A',
+  black: '#000000',
+  matcha: '#3D7A56',
+  matchaLight: '#EEF5F0',
+};
