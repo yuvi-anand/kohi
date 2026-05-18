@@ -11,15 +11,15 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Rating } from '../../lib/types';
+import { Rating, FeedItem } from '../../lib/types';
 import { Colors } from '../../lib/colors';
-import { getRatings } from '../../lib/api';
+import { getRatings, getFriendFeed } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import ShopCard from '../../components/ShopCard';
-import { formatScore, overallColor } from '../../lib/utils';
+import { formatScore, overallColor, timeAgo } from '../../lib/utils';
 
 type FeedMode = 'nearby' | 'social';
 type Filter = 'all' | 'unrated' | 'laptop' | 'vibes' | 'coffee' | 'work';
@@ -43,19 +43,14 @@ function workScore(r: Rating): number {
   );
 }
 
-// Placeholder activity items for the social feed
-const PLACEHOLDER_ACTIVITY = [
-  { id: '1', emoji: '☕', name: 'Alex R.', action: 'rated', shop: 'Sightglass Coffee', score: 8.4, time: '2m ago' },
-  { id: '2', emoji: '🍵', name: 'Jamie L.', action: 'tried matcha at', shop: 'Verve Coffee', score: 7.1, time: '1h ago' },
-  { id: '3', emoji: '🔖', name: 'Sam K.', action: 'saved', shop: 'Blue Bottle Coffee', score: null, time: '3h ago' },
-  { id: '4', emoji: '☕', name: 'Morgan T.', action: 'rated', shop: 'Ritual Coffee', score: 9.2, time: '5h ago' },
-];
-
 export default function FeedScreen() {
   const [mode, setMode] = useState<FeedMode>('nearby');
   const [activeFilter, setActiveFilter] = useState<Filter>('all');
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
   const [loadingRatings, setLoadingRatings] = useState(false);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedLoaded, setFeedLoaded] = useState(false);
 
   const router = useRouter();
   const { user } = useAuth();
@@ -79,7 +74,18 @@ export default function FeedScreen() {
     }
   }, [user]);
 
-  useFocusEffect(useCallback(() => { loadRatings(); }, [loadRatings]));
+  const loadFeed = useCallback(async () => {
+    if (!user || !isSupabaseConfigured()) return;
+    setFeedLoading(true);
+    try {
+      setFeedItems(await getFriendFeed(user.id));
+      setFeedLoaded(true);
+    } catch { } finally {
+      setFeedLoading(false);
+    }
+  }, [user]);
+
+  useFocusEffect(useCallback(() => { loadRatings(); loadFeed(); }, [loadRatings, loadFeed]));
 
   const filtered = (() => {
     if (activeFilter === 'unrated') return shops.filter((s) => !ratings[s.id]);
@@ -195,39 +201,70 @@ export default function FeedScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.socialHeader}>
             <Text style={styles.socialTitle}>Friend Activity</Text>
-            <Text style={styles.socialSubtitle}>See what people you follow are rating</Text>
+            <TouchableOpacity style={styles.findFriendsBtn} onPress={() => router.push('/find-friends')}>
+              <Ionicons name="person-add-outline" size={15} color={Colors.caramel} />
+              <Text style={styles.findFriendsBtnText}>Find Friends</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Placeholder activity items */}
-          {PLACEHOLDER_ACTIVITY.map((item) => (
-            <View key={item.id} style={styles.activityCard}>
-              <View style={styles.activityAvatar}>
-                <Text style={styles.activityAvatarText}>{item.name[0]}</Text>
-              </View>
-              <View style={styles.activityBody}>
-                <Text style={styles.activityText}>
-                  <Text style={styles.activityName}>{item.name}</Text>
-                  {' '}{item.action}{' '}
-                  <Text style={styles.activityShop}>{item.shop}</Text>
-                </Text>
-                <Text style={styles.activityTime}>{item.time}</Text>
-              </View>
-              {item.score != null && (
-                <View style={[styles.activityScore, { backgroundColor: overallColor(item.score) }]}>
-                  <Text style={styles.activityScoreText}>{formatScore(item.score)}</Text>
-                </View>
-              )}
+          {feedLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={Colors.caramel} />
             </View>
-          ))}
-
-          <View style={styles.socialCta}>
-            <Ionicons name="people-outline" size={36} color={Colors.milk} />
-            <Text style={styles.socialCtaTitle}>Follow friends to see their ratings</Text>
-            <Text style={styles.socialCtaText}>
-              Social features are coming soon. You'll be able to follow other coffee lovers and see their ratings here.
-            </Text>
-          </View>
+          ) : feedItems.length === 0 && feedLoaded ? (
+            <View style={styles.socialCta}>
+              <Ionicons name="people-outline" size={36} color={Colors.milk} />
+              <Text style={styles.socialCtaTitle}>Follow friends to see their ratings</Text>
+              <Text style={styles.socialCtaText}>
+                Search for people you know and follow them to see their coffee ratings here.
+              </Text>
+              <TouchableOpacity style={styles.findFriendsCta} onPress={() => router.push('/find-friends')}>
+                <Text style={styles.findFriendsCtaText}>Find Friends</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            feedItems.map((item) => (
+              <TouchableOpacity
+                key={item.rating_id}
+                style={styles.activityCard}
+                onPress={() => router.push(`/shop/${item.shop_id}`)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.activityAvatar}>
+                  <Text style={styles.activityAvatarText}>
+                    {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.activityBody}>
+                  <Text style={styles.activityText}>
+                    <Text style={styles.activityName}>
+                      {item.display_name ?? (item.username ? `@${item.username}` : 'Someone')}
+                    </Text>
+                    {' rated '}
+                    <Text style={styles.activityShop}>{item.shop_name}</Text>
+                    {' '}{item.drink_type === 'matcha' ? '🍵' : '☕'}
+                  </Text>
+                  {item.notes ? (
+                    <Text style={styles.activityNote} numberOfLines={2}>"{item.notes}"</Text>
+                  ) : null}
+                  <Text style={styles.activityTime}>{timeAgo(item.created_at)}</Text>
+                </View>
+                <View style={[styles.activityScore, { backgroundColor: overallColor(item.overall) }]}>
+                  <Text style={styles.activityScoreText}>{formatScore(item.overall)}</Text>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
         </ScrollView>
+      )}
+      {mode === 'nearby' && (
+        <TouchableOpacity
+          style={styles.reelFab}
+          onPress={() => router.push('/add-reel')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="link" size={20} color={Colors.white} />
+        </TouchableOpacity>
       )}
     </SafeAreaView>
   );
@@ -291,9 +328,10 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: Colors.muted },
 
   // Social feed
-  socialHeader: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
-  socialTitle: { fontSize: 20, fontWeight: '700', color: Colors.roast, marginBottom: 2 },
-  socialSubtitle: { fontSize: 13, color: Colors.muted },
+  socialHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
+  socialTitle: { fontSize: 20, fontWeight: '700', color: Colors.roast },
+  findFriendsBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1.5, borderColor: Colors.caramel },
+  findFriendsBtnText: { fontSize: 13, fontWeight: '600', color: Colors.caramel },
 
   activityCard: {
     flexDirection: 'row',
@@ -337,4 +375,24 @@ const styles = StyleSheet.create({
   },
   socialCtaTitle: { fontSize: 16, fontWeight: '700', color: Colors.espresso, textAlign: 'center' },
   socialCtaText: { fontSize: 13, color: Colors.muted, textAlign: 'center', lineHeight: 19 },
+  activityNote: { fontSize: 12, color: Colors.muted, fontStyle: 'italic', marginTop: 2, lineHeight: 16 },
+  findFriendsCta: { backgroundColor: Colors.caramel, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 24, marginTop: 4 },
+  findFriendsCtaText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+
+  reelFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.roast,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.roast,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
 });

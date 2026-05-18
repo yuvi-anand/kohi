@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../lib/colors';
 import { DrinkType } from '../../lib/types';
 import { useShops } from '../../context/shops';
-import { getRating, upsertRating, upsertShop } from '../../lib/api';
+import { getRating, getRatings, upsertRating, upsertShop } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { computeOverall, formatScore, overallColor } from '../../lib/utils';
@@ -32,7 +32,7 @@ type DrinkQuality = { coffee_quality: number };
 // Shared: everything else is about the shop, not the drink
 type SharedState = {
   vibes: number;
-  seating: number;
+  enoughSeating: boolean | null;
   wifiGood: boolean | null;
   pastries: number | null;
   laptopFriendly: boolean;
@@ -40,14 +40,13 @@ type SharedState = {
 };
 
 const SHARED_CRITERIA = [
-  { key: 'vibes' as const,   label: 'Vibes',   icon: 'sunny-outline' as const,   max: 10 },
-  { key: 'seating' as const, label: 'Seating', icon: 'people-outline' as const,  max: 5 },
+  { key: 'vibes' as const, label: 'Vibes', icon: 'sunny-outline' as const, max: 10 },
 ];
 
-const DEFAULT_QUALITY: DrinkQuality = { coffee_quality: 7 };
+const DEFAULT_QUALITY: DrinkQuality = { coffee_quality: 5 };
 const DEFAULT_SHARED: SharedState = {
-  vibes: 7,
-  seating: 3,
+  vibes: 5,
+  enoughSeating: null,
   wifiGood: null,
   pastries: null,
   laptopFriendly: false,
@@ -68,6 +67,12 @@ export default function RateScreen() {
   const [shared, setShared] = useState<SharedState>(DEFAULT_SHARED);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [averages, setAverages] = useState<{
+    coffeeQuality: number | null;
+    matchaQuality: number | null;
+    vibes: number | null;
+    pastries: number | null;
+  }>({ coffeeQuality: null, matchaQuality: null, vibes: null, pastries: null });
   const scrollRef = useRef<ScrollView>(null);
 
   // Animation value: 0 = coffee, 1 = matcha
@@ -92,10 +97,24 @@ export default function RateScreen() {
     async function prefill() {
       if (!user || !isSupabaseConfigured() || !id) { setLoading(false); return; }
       try {
-        const [coffee, matcha] = await Promise.all([
+        const [coffee, matcha, allRatings] = await Promise.all([
           getRating(user.id, id, 'coffee'),
           getRating(user.id, id, 'matcha'),
+          getRatings(user.id),
         ]);
+
+        // Compute historical averages across all shops (excluding this shop for unbiased anchor)
+        const otherRatings = allRatings.filter((r) => r.shop_id !== id);
+        const avg = (arr: number[]) => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null;
+        const coffeeRatings = otherRatings.filter((r) => (r.drink_type ?? 'coffee') === 'coffee');
+        const matchaRatings = otherRatings.filter((r) => r.drink_type === 'matcha');
+        const pastriesRatings = otherRatings.filter((r) => r.pastries != null);
+        setAverages({
+          coffeeQuality: avg(coffeeRatings.map((r) => r.coffee_quality)),
+          matchaQuality: avg(matchaRatings.map((r) => r.coffee_quality)),
+          vibes: avg(otherRatings.map((r) => r.vibes)),
+          pastries: avg(pastriesRatings.map((r) => r.pastries!)),
+        });
         if (coffee) setCoffeeQuality({ coffee_quality: coffee.coffee_quality });
         if (matcha) setMatchaQuality({ coffee_quality: matcha.coffee_quality });
         // Shared fields come from whichever rating exists (coffee preferred)
@@ -103,7 +122,7 @@ export default function RateScreen() {
         if (src) {
           setShared({
             vibes: src.vibes,
-            seating: src.seating,
+            enoughSeating: src.seating == null ? null : src.seating >= 3,
             wifiGood: src.wifi_quality == null ? null : src.wifi_quality >= 3,
             pastries: src.pastries ?? null,
             laptopFriendly: src.laptop_friendly,
@@ -134,10 +153,11 @@ export default function RateScreen() {
   const setCurrentQuality = drinkType === 'coffee' ? setCoffeeQuality : setMatchaQuality;
 
   const wifiVal = shared.wifiGood === null ? 3 : shared.wifiGood ? 5 : 1;
+  const seatingVal = shared.enoughSeating === null ? 3 : shared.enoughSeating ? 5 : 1;
   const overall = computeOverall(
     currentQuality.coffee_quality,
     shared.vibes,
-    shared.seating,
+    seatingVal,
     wifiVal,
     shared.pastries
   );
@@ -154,7 +174,7 @@ export default function RateScreen() {
         drink_type: drinkType,
         coffee_quality: currentQuality.coffee_quality,
         vibes: shared.vibes,
-        seating: shared.seating,
+        seating: shared.enoughSeating === null ? 3 : shared.enoughSeating ? 5 : 1,
         wifi_quality: shared.wifiGood === null ? 3 : shared.wifiGood ? 5 : 1,
         work_friendliness: 3,
         pastries: shared.pastries ?? undefined,
@@ -188,6 +208,7 @@ export default function RateScreen() {
   }
 
   const isMatcha = drinkType === 'matcha';
+  const qualityAvg = isMatcha ? averages.matchaQuality : averages.coffeeQuality;
 
   return (
     <Animated.View style={[styles.safeWrapper, { backgroundColor: bgAnim }]}>
@@ -237,17 +258,22 @@ export default function RateScreen() {
                 <Text style={styles.criterionEmoji}>{isMatcha ? '🍵' : '☕'}</Text>
                 <Text style={styles.criterionLabel}>{isMatcha ? 'Matcha' : 'Coffee'}</Text>
               </View>
-              <Slider
-                style={styles.slider}
-                minimumValue={1}
-                maximumValue={10}
-                step={1}
-                value={currentQuality.coffee_quality}
-                onValueChange={(v) => setCurrentQuality({ coffee_quality: v })}
-                minimumTrackTintColor={sliderColor}
-                maximumTrackTintColor={Colors.milk}
-                thumbTintColor={sliderColor}
-              />
+              <View style={styles.sliderWrap}>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={1}
+                  maximumValue={10}
+                  step={1}
+                  value={currentQuality.coffee_quality}
+                  onValueChange={(v) => setCurrentQuality({ coffee_quality: v })}
+                  minimumTrackTintColor={sliderColor}
+                  maximumTrackTintColor={Colors.milk}
+                  thumbTintColor={sliderColor}
+                />
+                {qualityAvg != null && (
+                  <Text style={styles.avgLabel}>your avg: {qualityAvg}</Text>
+                )}
+              </View>
               <Animated.Text style={[styles.criterionScore, { color: accentAnim }]}>
                 {currentQuality.coffee_quality}
                 <Text style={styles.criterionMax}>/10</Text>
@@ -257,23 +283,29 @@ export default function RateScreen() {
             {/* Shared criteria */}
             {SHARED_CRITERIA.map((c) => {
               const val = shared[c.key];
+              const criterionAvg = averages[c.key as keyof typeof averages];
               return (
                 <View key={c.key} style={styles.criterionRow}>
                   <View style={styles.criterionMeta}>
                     <Ionicons name={c.icon} size={20} color={Colors.muted} style={styles.criterionIcon} />
                     <Text style={styles.criterionLabel}>{c.label}</Text>
                   </View>
-                  <Slider
-                    style={styles.slider}
-                    minimumValue={1}
-                    maximumValue={c.max}
-                    step={1}
-                    value={val}
-                    onValueChange={(v) => setShared((prev) => ({ ...prev, [c.key]: v }))}
-                    minimumTrackTintColor={sliderColor}
-                    maximumTrackTintColor={Colors.milk}
-                    thumbTintColor={sliderColor}
-                  />
+                  <View style={styles.sliderWrap}>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={1}
+                      maximumValue={c.max}
+                      step={1}
+                      value={val}
+                      onValueChange={(v) => setShared((prev) => ({ ...prev, [c.key]: v }))}
+                      minimumTrackTintColor={sliderColor}
+                      maximumTrackTintColor={Colors.milk}
+                      thumbTintColor={sliderColor}
+                    />
+                    {criterionAvg != null && (
+                      <Text style={styles.avgLabel}>your avg: {criterionAvg}</Text>
+                    )}
+                  </View>
                   <Animated.Text style={[styles.criterionScore, { color: accentAnim }]}>
                     {val}
                     <Text style={styles.criterionMax}>/{c.max}</Text>
@@ -281,6 +313,26 @@ export default function RateScreen() {
                 </View>
               );
             })}
+
+            {/* Seating row — shared */}
+            <View style={styles.thumbRow}>
+              <Ionicons name="people-outline" size={20} color={Colors.muted} style={styles.criterionIcon} />
+              <Text style={styles.thumbRowLabel}>Enough seating?</Text>
+              <View style={styles.thumbBtns}>
+                <TouchableOpacity
+                  style={[styles.thumbBtn, shared.enoughSeating === true && { backgroundColor: sliderColor, borderColor: sliderColor }]}
+                  onPress={() => setShared((prev) => ({ ...prev, enoughSeating: prev.enoughSeating === true ? null : true }))}
+                >
+                  <Ionicons name="checkmark" size={20} color={shared.enoughSeating === true ? Colors.white : Colors.muted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.thumbBtn, shared.enoughSeating === false && styles.thumbBtnActiveNeutral]}
+                  onPress={() => setShared((prev) => ({ ...prev, enoughSeating: prev.enoughSeating === false ? null : false }))}
+                >
+                  <Ionicons name="close" size={20} color={shared.enoughSeating === false ? Colors.white : Colors.muted} />
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {/* WiFi row — shared */}
             <View style={styles.thumbRow}>
@@ -291,13 +343,13 @@ export default function RateScreen() {
                   style={[styles.thumbBtn, shared.wifiGood === true && { backgroundColor: sliderColor, borderColor: sliderColor }]}
                   onPress={() => setShared((prev) => ({ ...prev, wifiGood: prev.wifiGood === true ? null : true }))}
                 >
-                  <Text style={styles.thumbIcon}>👍</Text>
+                  <Ionicons name="checkmark" size={20} color={shared.wifiGood === true ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, shared.wifiGood === false && styles.thumbBtnActiveDown]}
+                  style={[styles.thumbBtn, shared.wifiGood === false && styles.thumbBtnActiveNeutral]}
                   onPress={() => setShared((prev) => ({ ...prev, wifiGood: prev.wifiGood === false ? null : false }))}
                 >
-                  <Text style={styles.thumbIcon}>👎</Text>
+                  <Ionicons name="close" size={20} color={shared.wifiGood === false ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -324,17 +376,22 @@ export default function RateScreen() {
             {shared.pastries != null && (
               <View style={styles.criterionRow}>
                 <View style={{ width: 90 }} />
-                <Slider
-                  style={styles.slider}
-                  minimumValue={1}
-                  maximumValue={5}
-                  step={1}
-                  value={shared.pastries}
-                  onValueChange={(v) => setShared((prev) => ({ ...prev, pastries: v }))}
-                  minimumTrackTintColor={sliderColor}
-                  maximumTrackTintColor={Colors.milk}
-                  thumbTintColor={sliderColor}
-                />
+                <View style={styles.sliderWrap}>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={5}
+                    step={1}
+                    value={shared.pastries}
+                    onValueChange={(v) => setShared((prev) => ({ ...prev, pastries: v }))}
+                    minimumTrackTintColor={sliderColor}
+                    maximumTrackTintColor={Colors.milk}
+                    thumbTintColor={sliderColor}
+                  />
+                  {averages.pastries != null && (
+                    <Text style={styles.avgLabel}>your avg: {averages.pastries}</Text>
+                  )}
+                </View>
                 <Animated.Text style={[styles.criterionScore, { color: accentAnim }]}>
                   {shared.pastries}
                   <Text style={styles.criterionMax}>/5</Text>
@@ -443,7 +500,9 @@ const styles = StyleSheet.create({
   criterionEmoji: { fontSize: 22 },
   criterionIcon: { width: 26, textAlign: 'center' },
   criterionLabel: { fontSize: 14, fontWeight: '600', color: Colors.espresso },
-  slider: { flex: 1, height: 40 },
+  sliderWrap: { flex: 1 },
+  slider: { width: '100%', height: 40 },
+  avgLabel: { fontSize: 11, color: Colors.muted, textAlign: 'center', marginTop: -4, marginBottom: 2 },
   criterionScore: { fontSize: 18, fontWeight: '700', width: 42, textAlign: 'right' },
   criterionMax: { fontSize: 11, fontWeight: '500', color: Colors.muted },
 
@@ -456,9 +515,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: Colors.milk,
   },
-  thumbBtnActiveDown: { backgroundColor: '#E8554E', borderColor: '#E8554E' },
   thumbBtnActiveNeutral: { backgroundColor: Colors.muted, borderColor: Colors.muted },
-  thumbIcon: { fontSize: 20 },
 
   divider: { height: 1, backgroundColor: Colors.foam, marginVertical: 10 },
 

@@ -159,6 +159,17 @@ export default function MyListScreen() {
         <FlatList
           data={bookmarkedShops}
           keyExtractor={(item) => item.id}
+          ListHeaderComponent={
+            <TouchableOpacity
+              style={styles.reelPasteBar}
+              onPress={() => router.push('/add-reel')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="link-outline" size={16} color={Colors.muted} />
+              <Text style={styles.reelPasteBarText}>Paste link from TikTok / Reels</Text>
+              <Ionicons name="arrow-forward" size={14} color={Colors.muted} />
+            </TouchableOpacity>
+          }
           renderItem={({ item }) => (
             <ShopCard
               shop={item}
@@ -235,4 +246,14 @@ const styles = StyleSheet.create({
   emptyIcon: { marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.espresso, marginBottom: 8 },
   emptyText: { fontSize: 14, color: Colors.muted, textAlign: 'center', lineHeight: 20 },
+
+  reelPasteBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    backgroundColor: Colors.white, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 13,
+    borderWidth: 1, borderColor: Colors.milk,
+    borderStyle: 'dashed',
+  },
+  reelPasteBarText: { flex: 1, fontSize: 14, color: Colors.muted },
 });

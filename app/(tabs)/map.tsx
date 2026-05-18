@@ -12,11 +12,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../lib/colors';
-import { CoffeeShop, Rating, DrinkType } from '../../lib/types';
+import { CoffeeShop, Rating, DrinkType, ReelSave } from '../../lib/types';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { fetchNearby, isPlacesConfigured } from '../../lib/places';
-import { getRatings } from '../../lib/api';
+import { getRatings, getReelSaves } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { formatScore, overallColor } from '../../lib/utils';
@@ -40,9 +40,10 @@ export default function MapScreen() {
   const [coffeeRatings, setCoffeeRatings] = useState<Record<string, Rating>>({});
   const [matchaRatings, setMatchaRatings] = useState<Record<string, Rating>>({});
   const [drinkType, setDrinkType] = useState<DrinkType>('coffee');
+  const [reelSaves, setReelSaves] = useState<ReelSave[]>([]);
 
   const { coords } = useLocation();
-  const { shops: globalShops, addToCache } = useShops();
+  const { shops: globalShops, addToCache, shopById } = useShops();
   const { user } = useAuth();
 
   // Seed with global shops on first load
@@ -66,6 +67,7 @@ export default function MapScreen() {
           setCoffeeRatings(cm);
           setMatchaRatings(mm);
         }).catch(() => {});
+        getReelSaves(user.id).then(setReelSaves).catch(() => {});
       }
       goToCurrentLocation();
     }, [user, coords])
@@ -157,6 +159,23 @@ export default function MapScreen() {
             </Marker>
           );
         })}
+        {reelSaves
+          .filter((rs) => rs.shop_id && shopById[rs.shop_id!]?.lat && shopById[rs.shop_id!]?.lng)
+          .map((rs) => {
+            const shop = shopById[rs.shop_id!]!;
+            return (
+              <Marker
+                key={`reel-${rs.id}`}
+                coordinate={{ latitude: shop.lat!, longitude: shop.lng! }}
+                onPress={() => router.push(`/shop/${shop.id}`)}
+              >
+                <View style={styles.reelPin}>
+                  <Ionicons name="film-outline" size={14} color={Colors.white} />
+                </View>
+              </Marker>
+            );
+          })
+        }
       </MapView>
 
       {/* List view — sits below the mini-map */}
@@ -232,6 +251,15 @@ export default function MapScreen() {
         activeOpacity={0.85}
       >
         <Ionicons name="locate" size={20} color={Colors.caramel} />
+      </TouchableOpacity>
+
+      {/* Add from Reel button */}
+      <TouchableOpacity
+        style={styles.reelBtn}
+        onPress={() => router.push('/add-reel')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="link" size={20} color={Colors.white} />
       </TouchableOpacity>
 
       {/* Toggle button — bottom right */}
@@ -390,4 +418,33 @@ const styles = StyleSheet.create({
   unratedBadge: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: Colors.milk, alignItems: 'center', justifyContent: 'center' },
   unratedText: { fontSize: 11, color: Colors.muted, fontWeight: '500' },
   separator: { height: 1, backgroundColor: Colors.foam, marginLeft: 50 },
+
+  reelBtn: {
+    position: 'absolute',
+    bottom: 32,
+    alignSelf: 'center',
+    left: '50%',
+    marginLeft: -26,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.roast,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.roast,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  reelPin: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: Colors.roast,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.white,
+    shadowColor: Colors.espresso,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2, shadowRadius: 3, elevation: 4,
+  },
 });

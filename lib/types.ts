@@ -49,3 +49,40 @@ export interface Profile {
   bio: string | null;
   created_at?: string;
 }
+
+export interface FeedItem {
+  rating_id: string;
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+  shop_id: string;
+  shop_name: string;
+  shop_address: string;
+  drink_type: DrinkType;
+  overall: number;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface UserResult {
+  id: string;
+  username: string | null;
+  name: string | null;
+  bio: string | null;
+  rating_count: number;
+  is_following: boolean;
+}
+
+export interface ReelSave {
+  id?: string;
+  user_id?: string;
+  url: string;
+  platform?: string | null;
+  shop_id?: string | null;
+  extracted_name?: string | null;
+  extracted_summary?: string | null;
+  source_caption?: string | null;
+  thumbnail_url?: string | null;
+  status?: string;
+  created_at?: string;
+}

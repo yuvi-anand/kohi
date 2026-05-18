@@ -16,7 +16,7 @@ import { Colors } from '../../lib/colors';
 import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds } from '../../lib/api';
+import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds, getFollowCounts } from '../../lib/api';
 import { Rating, DrinkType } from '../../lib/types';
 import { formatScore, overallColor } from '../../lib/utils';
 
@@ -29,6 +29,7 @@ export default function ProfileScreen() {
 
   const [ratingCount, setRatingCount] = useState(0);
   const [bookmarkCount, setBookmarkCount] = useState(0);
+  const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [coffeeRatings, setCoffeeRatings] = useState<Rating[]>([]);
   const [matchaRatings, setMatchaRatings] = useState<Rating[]>([]);
   const [rankDrinkType, setRankDrinkType] = useState<DrinkType>('coffee');
@@ -45,11 +46,13 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     if (!user || !isSupabaseConfigured()) return;
     try {
-      const [allRatings, bookmarks, profile] = await Promise.all([
+      const [allRatings, bookmarks, profile, counts] = await Promise.all([
         getRatings(user.id),
         getBookmarks(user.id),
         getProfile(user.id),
+        getFollowCounts(user.id),
       ]);
+      setFollowCounts(counts);
       const coffee = allRatings.filter((r) => (r.drink_type ?? 'coffee') === 'coffee');
       const matcha = allRatings.filter((r) => r.drink_type === 'matcha');
       setCoffeeRatings(coffee);
@@ -90,11 +93,11 @@ export default function ProfileScreen() {
     try {
       await upsertProfile({
         id: user.id,
-        username: trimmedUsername || null,
+        username: usernameIsLocked ? username : (trimmedUsername || null),
         name: trimmedName || null,
         bio: trimmedBio || null,
       });
-      setUsername(trimmedUsername);
+      if (!usernameIsLocked) setUsername(trimmedUsername);
       setName(trimmedName);
       setBio(trimmedBio);
       setEditing(false);
@@ -108,6 +111,7 @@ export default function ProfileScreen() {
   const topRatings = (rankDrinkType === 'coffee' ? coffeeRatings : matchaRatings).slice(0, 5);
   const initials = name ? name[0].toUpperCase() : (user?.email?.[0]?.toUpperCase() ?? '?');
   const needsSetup = !username && !editing;
+  const usernameIsLocked = !!username;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -115,9 +119,14 @@ export default function ProfileScreen() {
         <Text style={styles.title}>Profile</Text>
         <View style={styles.headerActions}>
           {!editing && (
-            <TouchableOpacity onPress={startEdit} style={styles.editBtn}>
-              <Text style={styles.editBtnText}>Edit</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={() => router.push('/find-friends')} style={styles.editBtn}>
+                <Text style={styles.editBtnText}>Find Friends</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={startEdit} style={styles.editBtn}>
+                <Text style={styles.editBtnText}>Edit</Text>
+              </TouchableOpacity>
+            </>
           )}
           <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
             <Ionicons name="settings-outline" size={20} color={Colors.muted} />
@@ -141,18 +150,26 @@ export default function ProfileScreen() {
                 onChangeText={setDraftName}
                 autoCapitalize="words"
               />
-              <View style={styles.usernameInputRow}>
-                <Text style={styles.atSign}>@</Text>
-                <TextInput
-                  style={[styles.input, styles.usernameInput]}
-                  placeholder="username"
-                  placeholderTextColor={Colors.muted}
-                  value={draftUsername}
-                  onChangeText={(t) => setDraftUsername(t.replace(/[^a-z0-9_.]/gi, '').toLowerCase())}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
+              {usernameIsLocked ? (
+                <View style={styles.lockedRow}>
+                  <Ionicons name="lock-closed-outline" size={14} color={Colors.muted} />
+                  <Text style={styles.lockedText}>@{username}</Text>
+                  <Text style={styles.lockedHint}>Username cannot be changed</Text>
+                </View>
+              ) : (
+                <View style={styles.usernameInputRow}>
+                  <Text style={styles.atSign}>@</Text>
+                  <TextInput
+                    style={[styles.input, styles.usernameInput]}
+                    placeholder="username"
+                    placeholderTextColor={Colors.muted}
+                    value={draftUsername}
+                    onChangeText={(t) => setDraftUsername(t.replace(/[^a-z0-9_.]/gi, '').toLowerCase())}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              )}
               <View>
                 <TextInput
                   style={[styles.input, styles.bioInput]}
@@ -211,6 +228,16 @@ export default function ProfileScreen() {
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{bookmarkCount}</Text>
             <Text style={styles.statLabel}>Saved</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{followCounts.following}</Text>
+            <Text style={styles.statLabel}>Following</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{followCounts.followers}</Text>
+            <Text style={styles.statLabel}>Followers</Text>
           </View>
         </View>
 
@@ -391,4 +418,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   rankScore: { fontSize: 13, fontWeight: '700', color: Colors.white },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.foam, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: Colors.milk },
+  lockedText: { fontSize: 15, color: Colors.espresso, fontWeight: '500' },
+  lockedHint: { fontSize: 12, color: Colors.muted, marginLeft: 4 },
 });

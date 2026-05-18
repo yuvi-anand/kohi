@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { CoffeeShop, Rating, Bookmark, Profile, DrinkType } from './types';
+import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ReelSave } from './types';
 
 export async function upsertShop(shop: CoffeeShop): Promise<void> {
   const { error } = await supabase.from('coffee_shops').upsert(
@@ -121,4 +121,130 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 export async function upsertProfile(profile: { id: string; username?: string | null; name?: string | null; bio?: string | null }): Promise<void> {
   const { error } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
   if (error) throw error;
+}
+
+export async function followUser(followerId: string, followingId: string): Promise<void> {
+  const { error } = await supabase
+    .from('follows')
+    .insert({ follower_id: followerId, following_id: followingId });
+  if (error) throw error;
+}
+
+export async function unfollowUser(followerId: string, followingId: string): Promise<void> {
+  const { error } = await supabase
+    .from('follows')
+    .delete()
+    .eq('follower_id', followerId)
+    .eq('following_id', followingId);
+  if (error) throw error;
+}
+
+export async function getFollowingIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('following_id')
+    .eq('follower_id', userId);
+  if (error) throw error;
+  return (data ?? []).map((f) => f.following_id);
+}
+
+export async function getFollowCounts(userId: string): Promise<{ following: number; followers: number }> {
+  const [{ count: following }, { count: followers }] = await Promise.all([
+    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+    supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId),
+  ]);
+  return { following: following ?? 0, followers: followers ?? 0 };
+}
+
+export async function getFriendFeed(userId: string): Promise<FeedItem[]> {
+  const followingIds = await getFollowingIds(userId);
+  if (followingIds.length === 0) return [];
+
+  const { data: ratings, error } = await supabase
+    .from('ratings')
+    .select('id, user_id, shop_id, drink_type, overall, notes, created_at, coffee_shops(name, address)')
+    .in('user_id', followingIds)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, name')
+    .in('id', followingIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+
+  return (ratings ?? []).map((r: any) => ({
+    rating_id: r.id,
+    user_id: r.user_id,
+    username: profileMap[r.user_id]?.username ?? null,
+    display_name: profileMap[r.user_id]?.name ?? null,
+    shop_id: r.shop_id,
+    shop_name: r.coffee_shops?.name ?? 'Unknown',
+    shop_address: r.coffee_shops?.address ?? '',
+    drink_type: r.drink_type ?? 'coffee',
+    overall: r.overall,
+    notes: r.notes,
+    created_at: r.created_at,
+  }));
+}
+
+export async function processReel(url: string): Promise<{
+  platform: string;
+  extracted_name: string;
+  extracted_summary: string | null;
+  source_caption: string;
+  thumbnail_url: string | null;
+  shop: { id: string; name: string; address: string; lat: number | null; lng: number | null; photo_url: string | null } | null;
+}> {
+  const { data, error } = await supabase.functions.invoke('process-reel', { body: { url } });
+  if (error) throw error;
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+export async function saveReelSave(save: ReelSave): Promise<void> {
+  const { error } = await supabase.from('reel_saves').insert(save);
+  if (error) throw error;
+}
+
+export async function getReelSaves(userId: string): Promise<ReelSave[]> {
+  const { data, error } = await supabase
+    .from('reel_saves')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function searchUsers(query: string, currentUserId: string): Promise<UserResult[]> {
+  if (!query.trim()) return [];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, name, bio')
+    .or(`username.ilike.%${query}%,name.ilike.%${query}%`)
+    .neq('id', currentUserId)
+    .limit(20);
+
+  if (!profiles || profiles.length === 0) return [];
+  const ids = profiles.map((p) => p.id);
+
+  const [{ data: follows }, { data: ratingRows }] = await Promise.all([
+    supabase.from('follows').select('following_id').eq('follower_id', currentUserId).in('following_id', ids),
+    supabase.from('ratings').select('user_id').in('user_id', ids),
+  ]);
+
+  const followingSet = new Set((follows ?? []).map((f) => f.following_id));
+  const countMap: Record<string, number> = {};
+  for (const r of (ratingRows ?? [])) countMap[r.user_id] = (countMap[r.user_id] ?? 0) + 1;
+
+  return profiles.map((p) => ({
+    id: p.id,
+    username: p.username,
+    name: p.name,
+    bio: p.bio,
+    rating_count: countMap[p.id] ?? 0,
+    is_following: followingSet.has(p.id),
+  }));
 }
