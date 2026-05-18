@@ -40,8 +40,8 @@ type SharedState = {
 };
 
 const SHARED_CRITERIA = [
-  { key: 'vibes' as const,   label: 'Vibes',   emoji: '✨', max: 10 },
-  { key: 'seating' as const, label: 'Seating', emoji: '🪑', max: 5 },
+  { key: 'vibes' as const,   label: 'Vibes',   icon: 'sunny-outline' as const,   max: 10 },
+  { key: 'seating' as const, label: 'Seating', icon: 'people-outline' as const,  max: 5 },
 ];
 
 const DEFAULT_QUALITY: DrinkQuality = { coffee_quality: 7 };
@@ -260,7 +260,7 @@ export default function RateScreen() {
               return (
                 <View key={c.key} style={styles.criterionRow}>
                   <View style={styles.criterionMeta}>
-                    <Text style={styles.criterionEmoji}>{c.emoji}</Text>
+                    <Ionicons name={c.icon} size={20} color={Colors.muted} style={styles.criterionIcon} />
                     <Text style={styles.criterionLabel}>{c.label}</Text>
                   </View>
                   <Slider
@@ -284,7 +284,7 @@ export default function RateScreen() {
 
             {/* WiFi row — shared */}
             <View style={styles.thumbRow}>
-              <Text style={styles.criterionEmoji}>📶</Text>
+              <Ionicons name="wifi-outline" size={20} color={Colors.muted} style={styles.criterionIcon} />
               <Text style={styles.thumbRowLabel}>Has good WiFi?</Text>
               <View style={styles.thumbBtns}>
                 <TouchableOpacity
@@ -304,7 +304,7 @@ export default function RateScreen() {
 
             {/* Pastries row — shared */}
             <View style={styles.thumbRow}>
-              <Text style={styles.criterionEmoji}>🥐</Text>
+              <Ionicons name="cafe-outline" size={20} color={Colors.muted} style={styles.criterionIcon} />
               <Text style={styles.thumbRowLabel}>Has pastries?</Text>
               <View style={styles.thumbBtns}>
                 <TouchableOpacity
@@ -346,7 +346,7 @@ export default function RateScreen() {
 
             {/* Laptop toggle — shared */}
             <View style={styles.toggleRow}>
-              <Text style={styles.toggleEmoji}>💻</Text>
+              <Ionicons name="laptop-outline" size={20} color={Colors.muted} />
               <Text style={styles.toggleLabel}>Laptop Friendly</Text>
               <Switch
                 value={shared.laptopFriendly}
@@ -360,7 +360,7 @@ export default function RateScreen() {
 
             {/* Notes — shared */}
             <View style={styles.notesRow}>
-              <Text style={styles.toggleEmoji}>📝</Text>
+              <Ionicons name="create-outline" size={20} color={Colors.muted} />
               <TextInput
                 style={styles.notesInput}
                 placeholder="Notes (optional)"
@@ -417,22 +417,22 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   headerCenter: { flex: 1, marginHorizontal: 12 },
-  headerLabel: { fontSize: 10, fontWeight: '800', color: Colors.muted, letterSpacing: 1 },
-  headerShop: { fontSize: 15, fontWeight: '800', color: Colors.espresso },
+  headerLabel: { fontSize: 10, fontWeight: '700', color: Colors.muted, letterSpacing: 1 },
+  headerShop: { fontSize: 15, fontWeight: '700', color: Colors.espresso },
   overallBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  overallText: { color: Colors.white, fontSize: 13, fontWeight: '800' },
+  overallText: { color: Colors.white, fontSize: 13, fontWeight: '700' },
 
   drinkToggleRow: {
     flexDirection: 'row',
     marginHorizontal: 16,
     marginVertical: 12,
     backgroundColor: Colors.milk,
-    borderRadius: 12,
+    borderRadius: 6,
     padding: 3,
     gap: 3,
   },
-  drinkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
-  drinkBtnText: { fontSize: 14, fontWeight: '700', color: Colors.muted },
+  drinkBtn: { flex: 1, paddingVertical: 9, borderRadius: 5, alignItems: 'center' },
+  drinkBtnText: { fontSize: 14, fontWeight: '600', color: Colors.muted },
   drinkBtnTextActive: { color: Colors.white },
 
   body: { flex: 1 },
@@ -441,13 +441,14 @@ const styles = StyleSheet.create({
   criterionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   criterionMeta: { flexDirection: 'row', alignItems: 'center', width: 90, gap: 8 },
   criterionEmoji: { fontSize: 22 },
-  criterionLabel: { fontSize: 14, fontWeight: '700', color: Colors.espresso },
+  criterionIcon: { width: 26, textAlign: 'center' },
+  criterionLabel: { fontSize: 14, fontWeight: '600', color: Colors.espresso },
   slider: { flex: 1, height: 40 },
-  criterionScore: { fontSize: 18, fontWeight: '800', width: 42, textAlign: 'right' },
+  criterionScore: { fontSize: 18, fontWeight: '700', width: 42, textAlign: 'right' },
   criterionMax: { fontSize: 11, fontWeight: '500', color: Colors.muted },
 
   thumbRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
-  thumbRowLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.espresso },
+  thumbRowLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.espresso },
   thumbBtns: { flexDirection: 'row', gap: 8 },
   thumbBtn: {
     width: 44, height: 44, borderRadius: 22,
@@ -463,7 +464,7 @@ const styles = StyleSheet.create({
 
   toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   toggleEmoji: { fontSize: 22 },
-  toggleLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.espresso },
+  toggleLabel: { flex: 1, fontSize: 15, fontWeight: '500', color: Colors.espresso },
 
   notesRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   notesInput: {
@@ -472,8 +473,8 @@ const styles = StyleSheet.create({
   },
 
   footer: { padding: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.milk },
-  saveBtn: { borderRadius: 14, overflow: 'hidden' },
+  saveBtn: { borderRadius: 8, overflow: 'hidden' },
   saveBtnInner: { paddingVertical: 15, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: Colors.white, fontSize: 16, fontWeight: '800' },
+  saveBtnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
 });

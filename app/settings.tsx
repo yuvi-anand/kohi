@@ -57,13 +57,13 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
-  title: { fontSize: 18, fontWeight: '800', color: Colors.roast },
+  title: { fontSize: 18, fontWeight: '700', color: Colors.roast },
 
   section: {
     backgroundColor: Colors.white,
     marginHorizontal: 16,
     marginTop: 24,
-    borderRadius: 16,
+    borderRadius: 8,
     overflow: 'hidden',
   },
   row: { paddingHorizontal: 20, paddingVertical: 16 },

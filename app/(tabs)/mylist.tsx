@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { CoffeeShop, Rating, DrinkType, Bookmark } from '../../lib/types';
 import { Colors } from '../../lib/colors';
@@ -144,7 +145,7 @@ export default function MyListScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>{isMatcha ? '🍵' : '☕'}</Text>
+              <Ionicons name="star-outline" size={40} color={Colors.milk} style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>No {isMatcha ? 'matcha' : 'coffee'} ratings yet</Text>
               <Text style={styles.emptyText}>
                 Rate a {isMatcha ? 'matcha' : 'coffee shop'} to build your list.
@@ -166,7 +167,7 @@ export default function MyListScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>🔖</Text>
+              <Ionicons name="bookmark-outline" size={40} color={Colors.milk} style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>No saved shops yet</Text>
               <Text style={styles.emptyText}>
                 Tap the bookmark icon on any shop to save it here.
@@ -188,7 +189,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.roast, letterSpacing: -0.5 },
+  title: { fontSize: 28, fontWeight: '700', color: Colors.roast, letterSpacing: -0.5 },
   subtitle: { fontSize: 13, color: Colors.muted, marginTop: 2 },
 
   toggleRow: {
@@ -196,18 +197,18 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     backgroundColor: Colors.milk,
-    borderRadius: 12,
+    borderRadius: 6,
     padding: 3,
     gap: 3,
   },
   toggleBtn: {
     flex: 1,
     paddingVertical: 9,
-    borderRadius: 10,
+    borderRadius: 5,
     alignItems: 'center',
   },
   toggleBtnActive: { backgroundColor: Colors.roast },
-  toggleBtnText: { fontSize: 14, fontWeight: '700', color: Colors.muted },
+  toggleBtnText: { fontSize: 14, fontWeight: '600', color: Colors.muted },
   toggleBtnTextActive: { color: Colors.white },
 
   drinkToggleRow: {
@@ -215,23 +216,23 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     backgroundColor: Colors.foam,
-    borderRadius: 10,
+    borderRadius: 5,
     padding: 3,
     gap: 3,
   },
   drinkBtn: {
     flex: 1,
     paddingVertical: 7,
-    borderRadius: 8,
+    borderRadius: 4,
     alignItems: 'center',
     borderWidth: 0,
   },
-  drinkBtnText: { fontSize: 13, fontWeight: '600', color: Colors.muted },
+  drinkBtnText: { fontSize: 13, fontWeight: '500', color: Colors.muted },
   drinkBtnTextActive: { color: Colors.white },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   empty: { paddingTop: 80, alignItems: 'center', paddingHorizontal: 40 },
-  emptyEmoji: { fontSize: 48, marginBottom: 16 },
+  emptyIcon: { marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.espresso, marginBottom: 8 },
   emptyText: { fontSize: 14, color: Colors.muted, textAlign: 'center', lineHeight: 20 },
 });

@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   },
   score: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     width: 36,
     textAlign: 'right',
   },

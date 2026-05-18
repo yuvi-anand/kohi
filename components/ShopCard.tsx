@@ -33,17 +33,17 @@ export default function ShopCard({ shop, rating, rank, onPress }: Props) {
           <View style={styles.badges}>
             {rating.laptop_friendly && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>💻 Laptop</Text>
+                <Text style={styles.badgeText}>Laptop</Text>
               </View>
             )}
             {(rating.wifi_quality ?? 1) >= 3 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>📶 WiFi</Text>
+                <Text style={styles.badgeText}>WiFi</Text>
               </View>
             )}
             {rating.vibes >= 8 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>✨ Vibes</Text>
+                <Text style={styles.badgeText}>Vibes</Text>
               </View>
             )}
           </View>
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
-    borderRadius: 14,
+    borderRadius: 8,
     marginHorizontal: 16,
     marginVertical: 6,
     padding: 14,
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   scoreText: {
     color: Colors.white,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   unratedBadge: {
     width: 40,
@@ -171,6 +171,6 @@ const styles = StyleSheet.create({
   unratedText: {
     fontSize: 11,
     color: Colors.muted,
-    fontWeight: '600',
+    fontWeight: '500',
   },
 });

@@ -27,10 +27,10 @@ type Filter = 'all' | 'unrated' | 'laptop' | 'vibes' | 'coffee' | 'work';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all',     label: 'All' },
   { key: 'unrated', label: 'Not Yet Rated' },
-  { key: 'laptop',  label: '💻 Laptop Friendly' },
-  { key: 'vibes',   label: '✨ High Vibes' },
-  { key: 'coffee',  label: '☕ Best Coffee' },
-  { key: 'work',    label: '🏢 Work Spot' },
+  { key: 'laptop',  label: 'Laptop Friendly' },
+  { key: 'vibes',   label: 'High Vibes' },
+  { key: 'coffee',  label: 'Best Coffee' },
+  { key: 'work',    label: 'Work Spot' },
 ];
 
 function workScore(r: Rating): number {
@@ -259,30 +259,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 12,
     backgroundColor: Colors.milk,
-    borderRadius: 12,
+    borderRadius: 6,
     padding: 3,
     gap: 3,
   },
-  modeBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
+  modeBtn: { flex: 1, paddingVertical: 9, borderRadius: 5, alignItems: 'center' },
   modeBtnActive: { backgroundColor: Colors.roast },
-  modeBtnText: { fontSize: 14, fontWeight: '700', color: Colors.muted },
+  modeBtnText: { fontSize: 14, fontWeight: '600', color: Colors.muted },
   modeBtnTextActive: { color: Colors.white },
 
   chipsScroll: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
   chip: {
-    backgroundColor: Colors.white, borderRadius: 20,
+    backgroundColor: Colors.white, borderRadius: 6,
     paddingHorizontal: 14, paddingVertical: 7,
     borderWidth: 1.5, borderColor: Colors.milk,
   },
   chipActive: { backgroundColor: Colors.roast, borderColor: Colors.roast },
-  chipText: { fontSize: 13, color: Colors.muted, fontWeight: '600' },
+  chipText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
   chipTextActive: { color: Colors.white },
 
   sectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingBottom: 8,
   },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: Colors.muted, letterSpacing: 1 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: Colors.muted, letterSpacing: 1 },
   sectionCount: { fontSize: 11, color: Colors.muted },
 
   center: { paddingTop: 60, alignItems: 'center', gap: 12 },
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
 
   // Social feed
   socialHeader: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
-  socialTitle: { fontSize: 20, fontWeight: '800', color: Colors.roast, marginBottom: 2 },
+  socialTitle: { fontSize: 20, fontWeight: '700', color: Colors.roast, marginBottom: 2 },
   socialSubtitle: { fontSize: 13, color: Colors.muted },
 
   activityCard: {
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     marginHorizontal: 16,
     marginBottom: 10,
-    borderRadius: 14,
+    borderRadius: 8,
     padding: 14,
     gap: 12,
     shadowColor: Colors.espresso,
@@ -314,22 +314,22 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  activityAvatarText: { fontSize: 16, fontWeight: '700', color: Colors.white },
+  activityAvatarText: { fontSize: 16, fontWeight: '600', color: Colors.white },
   activityBody: { flex: 1 },
   activityText: { fontSize: 13, color: Colors.espresso, lineHeight: 18 },
-  activityName: { fontWeight: '700' },
-  activityShop: { fontWeight: '600', color: Colors.caramel },
+  activityName: { fontWeight: '600' },
+  activityShop: { fontWeight: '500', color: Colors.caramel },
   activityTime: { fontSize: 11, color: Colors.muted, marginTop: 3 },
   activityScore: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  activityScoreText: { fontSize: 12, fontWeight: '800', color: Colors.white },
+  activityScoreText: { fontSize: 12, fontWeight: '700', color: Colors.white },
 
   socialCta: {
     marginHorizontal: 16, marginTop: 8,
     backgroundColor: Colors.white,
-    borderRadius: 16, padding: 28,
+    borderRadius: 8, padding: 28,
     alignItems: 'center', gap: 10,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 1 },

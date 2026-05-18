@@ -217,7 +217,7 @@ export default function ShopDetailScreen() {
             <View style={styles.divider} />
 
             <View style={styles.laptopRow}>
-              <Text style={styles.laptopLabel}>📶  Good WiFi</Text>
+              <Text style={styles.laptopLabel}>Good WiFi</Text>
               <View style={[styles.laptopBadge, { backgroundColor: (rating.wifi_quality ?? 1) >= 3 ? Colors.success : Colors.milk }]}>
                 <Text style={[styles.laptopBadgeText, { color: (rating.wifi_quality ?? 1) >= 3 ? Colors.white : Colors.muted }]}>
                   {(rating.wifi_quality ?? 1) >= 3 ? 'Yes' : 'No'}
@@ -226,7 +226,7 @@ export default function ShopDetailScreen() {
             </View>
 
             <View style={[styles.laptopRow, { marginTop: 10 }]}>
-              <Text style={styles.laptopLabel}>💻  Laptop Friendly</Text>
+              <Text style={styles.laptopLabel}>Laptop Friendly</Text>
               <View style={[styles.laptopBadge, { backgroundColor: rating.laptop_friendly ? Colors.success : Colors.milk }]}>
                 <Text style={[styles.laptopBadgeText, { color: rating.laptop_friendly ? Colors.white : Colors.muted }]}>
                   {rating.laptop_friendly ? 'Yes' : 'No'}
@@ -309,14 +309,14 @@ const styles = StyleSheet.create({
   },
   heroInitial: {
     fontSize: 64,
-    fontWeight: '800',
+    fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
   },
   infoCard: {
     backgroundColor: Colors.white,
     marginHorizontal: 16,
     marginTop: -16,
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 20,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 2 },
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '700',
     color: Colors.espresso,
     marginBottom: 4,
   },
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   overallText: {
     color: Colors.white,
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   actions: {
     flexDirection: 'row',
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 5,
     borderWidth: 1.5,
     borderColor: Colors.caramel,
   },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.caramel,
   },
   actionTextActive: {
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   ratingCard: {
     backgroundColor: Colors.white,
     marginHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 20,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 1 },
@@ -416,21 +416,21 @@ const styles = StyleSheet.create({
   laptopBadge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 4,
   },
   laptopBadgeText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   notesBox: {
     marginTop: 14,
     backgroundColor: Colors.foam,
-    borderRadius: 10,
+    borderRadius: 5,
     padding: 12,
   },
   notesLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.muted,
     marginBottom: 4,
     textTransform: 'uppercase',
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   unratedCard: {
     backgroundColor: Colors.white,
     marginHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 32,
     alignItems: 'center',
     shadowColor: Colors.espresso,
@@ -459,13 +459,13 @@ const styles = StyleSheet.create({
   },
   unratedTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     color: Colors.muted,
     marginBottom: 20,
   },
   rateBtn: {
     backgroundColor: Colors.caramel,
-    borderRadius: 12,
+    borderRadius: 6,
     paddingVertical: 12,
     paddingHorizontal: 28,
   },
