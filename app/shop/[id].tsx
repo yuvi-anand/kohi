@@ -8,6 +8,8 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  Image,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -91,6 +93,22 @@ export default function ShopDetailScreen() {
     }
   }
 
+  function handleNavigate() {
+    const hasCoords = shop?.lat && shop?.lng;
+    const appleDest = hasCoords
+      ? `maps://?daddr=${shop!.lat},${shop!.lng}`
+      : `maps://?q=${encodeURIComponent(shop!.address)}`;
+    const googleDest = hasCoords
+      ? `https://www.google.com/maps/dir/?api=1&destination=${shop!.lat},${shop!.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop!.address)}`;
+
+    Alert.alert('Navigate to', shop!.name, [
+      { text: 'Apple Maps', onPress: () => Linking.openURL(appleDest) },
+      { text: 'Google Maps', onPress: () => Linking.openURL(googleDest) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
   if (!shop) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -106,10 +124,16 @@ export default function ShopDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Header strip */}
         <View style={[styles.hero, { backgroundColor: heroColor(shop.name) }]}>
+          {shop.photo_url && (
+            <Image source={{ uri: shop.photo_url }} style={styles.heroImage} resizeMode="cover" />
+          )}
+          <View style={styles.heroOverlay} />
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color={Colors.white} />
           </TouchableOpacity>
-          <Text style={styles.heroInitial}>{shop.name[0].toUpperCase()}</Text>
+          {!shop.photo_url && (
+            <Text style={styles.heroInitial}>{shop.name[0].toUpperCase()}</Text>
+          )}
         </View>
 
         {/* Info section */}
@@ -141,11 +165,7 @@ export default function ShopDetailScreen() {
               style={styles.actionBtn}
               onPress={() => router.push(`/rate/${shop.id}`)}
             >
-              <Ionicons
-                name={rating ? 'create' : 'star'}
-                size={18}
-                color={Colors.caramel}
-              />
+              <Ionicons name={rating ? 'create' : 'star'} size={18} color={Colors.caramel} />
               <Text style={styles.actionText}>{rating ? 'Edit Rating' : 'Rate'}</Text>
             </TouchableOpacity>
 
@@ -166,6 +186,11 @@ export default function ShopDetailScreen() {
               <Text style={[styles.actionText, bookmarked && styles.actionTextActive]}>
                 {bookmarked ? 'Saved' : 'Save'}
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={handleNavigate}>
+              <Ionicons name="navigate-outline" size={18} color={Colors.caramel} />
+              <Text style={styles.actionText}>Navigate</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -257,9 +282,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   hero: {
-    height: 160,
+    height: 220,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  heroImage: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+  },
+  heroOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
   backBtn: {
     position: 'absolute',

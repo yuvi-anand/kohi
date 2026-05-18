@@ -17,7 +17,7 @@ import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds } from '../../lib/api';
-import { Rating } from '../../lib/types';
+import { Rating, DrinkType } from '../../lib/types';
 import { formatScore, overallColor } from '../../lib/utils';
 
 const BIO_LIMIT = 160;
@@ -29,7 +29,9 @@ export default function ProfileScreen() {
 
   const [ratingCount, setRatingCount] = useState(0);
   const [bookmarkCount, setBookmarkCount] = useState(0);
-  const [topRatings, setTopRatings] = useState<Rating[]>([]);
+  const [coffeeRatings, setCoffeeRatings] = useState<Rating[]>([]);
+  const [matchaRatings, setMatchaRatings] = useState<Rating[]>([]);
+  const [rankDrinkType, setRankDrinkType] = useState<DrinkType>('coffee');
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -43,16 +45,19 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     if (!user || !isSupabaseConfigured()) return;
     try {
-      const [ratings, bookmarks, profile] = await Promise.all([
-        getRatings(user.id, 'coffee'),
+      const [allRatings, bookmarks, profile] = await Promise.all([
+        getRatings(user.id),
         getBookmarks(user.id),
         getProfile(user.id),
       ]);
-      setRatingCount(ratings.length);
+      const coffee = allRatings.filter((r) => (r.drink_type ?? 'coffee') === 'coffee');
+      const matcha = allRatings.filter((r) => r.drink_type === 'matcha');
+      setCoffeeRatings(coffee);
+      setMatchaRatings(matcha);
+      const uniqueShops = new Set(allRatings.map((r) => r.shop_id));
+      setRatingCount(uniqueShops.size);
       setBookmarkCount(bookmarks.length);
-      setTopRatings(ratings.slice(0, 5));
-      // Ensure all rated shops are in the cache
-      const missingIds = ratings.map((r) => r.shop_id).filter((id) => !shopById[id]);
+      const missingIds = allRatings.map((r) => r.shop_id).filter((id) => !shopById[id]);
       if (missingIds.length > 0) {
         const fetched = await getShopsForIds([...new Set(missingIds)]);
         addToCache(fetched);
@@ -100,6 +105,7 @@ export default function ProfileScreen() {
     }
   }
 
+  const topRatings = (rankDrinkType === 'coffee' ? coffeeRatings : matchaRatings).slice(0, 5);
   const initials = name ? name[0].toUpperCase() : (user?.email?.[0]?.toUpperCase() ?? '?');
   const needsSetup = !username && !editing;
 
@@ -208,11 +214,31 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Coffee Rankings */}
-        {topRatings.length > 0 && (
+        {/* Rankings */}
+        {(coffeeRatings.length > 0 || matchaRatings.length > 0) && (
           <View style={styles.rankingsCard}>
-            <Text style={styles.rankingsTitle}>☕ My Coffee Rankings</Text>
-            {topRatings.map((r, i) => {
+            <View style={styles.rankingsHeader}>
+              <Text style={styles.rankingsTitle}>My Rankings</Text>
+              <View style={styles.drinkToggle}>
+                <TouchableOpacity
+                  style={[styles.drinkBtn, rankDrinkType === 'coffee' && styles.drinkBtnActive]}
+                  onPress={() => setRankDrinkType('coffee')}
+                >
+                  <Text style={[styles.drinkBtnText, rankDrinkType === 'coffee' && styles.drinkBtnTextActive]}>☕</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.drinkBtn, rankDrinkType === 'matcha' && { ...styles.drinkBtnActive, backgroundColor: Colors.matcha }]}
+                  onPress={() => setRankDrinkType('matcha')}
+                >
+                  <Text style={[styles.drinkBtnText, rankDrinkType === 'matcha' && styles.drinkBtnTextActive]}>🍵</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {topRatings.length === 0 ? (
+              <Text style={styles.rankingsEmpty}>
+                No {rankDrinkType} ratings yet.
+              </Text>
+            ) : topRatings.map((r, i) => {
               const shop = shopById[r.shop_id];
               if (!shop) return null;
               return (
@@ -235,6 +261,7 @@ export default function ProfileScreen() {
             })}
           </View>
         )}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -331,10 +358,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
   },
-  rankingsTitle: {
-    fontSize: 14, fontWeight: '800', color: Colors.espresso,
-    marginBottom: 12, paddingHorizontal: 16,
+  rankingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
+  rankingsTitle: { fontSize: 14, fontWeight: '800', color: Colors.espresso },
+  drinkToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.milk,
+    borderRadius: 10,
+    padding: 2,
+    gap: 2,
+  },
+  drinkBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  drinkBtnActive: { backgroundColor: Colors.caramel },
+  drinkBtnText: { fontSize: 16, color: Colors.muted },
+  drinkBtnTextActive: { color: Colors.white },
+  rankingsEmpty: { fontSize: 13, color: Colors.muted, paddingHorizontal: 16, paddingBottom: 8 },
   rankRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 10, gap: 12,

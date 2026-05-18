@@ -26,29 +26,29 @@ import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { computeOverall, formatScore, overallColor } from '../../lib/utils';
 
-const CRITERIA = [
-  { key: 'coffee_quality' as const, label: 'Coffee', emoji: '☕', max: 10 },
-  { key: 'vibes' as const,          label: 'Vibes',  emoji: '✨', max: 10 },
-  { key: 'seating' as const,        label: 'Seating',emoji: '🪑', max: 5 },
-];
+// Per-drink: only the quality score differs between coffee and matcha
+type DrinkQuality = { coffee_quality: number };
 
-type Scores = {
-  coffee_quality: number;
+// Shared: everything else is about the shop, not the drink
+type SharedState = {
   vibes: number;
   seating: number;
-};
-
-type DrinkState = {
-  scores: Scores;
-  wifiGood: boolean;
+  wifiGood: boolean | null;
   pastries: number | null;
   laptopFriendly: boolean;
   notes: string;
 };
 
-const DEFAULT_STATE: DrinkState = {
-  scores: { coffee_quality: 7, vibes: 7, seating: 3 },
-  wifiGood: true,
+const SHARED_CRITERIA = [
+  { key: 'vibes' as const,   label: 'Vibes',   emoji: '✨', max: 10 },
+  { key: 'seating' as const, label: 'Seating', emoji: '🪑', max: 5 },
+];
+
+const DEFAULT_QUALITY: DrinkQuality = { coffee_quality: 7 };
+const DEFAULT_SHARED: SharedState = {
+  vibes: 7,
+  seating: 3,
+  wifiGood: null,
   pastries: null,
   laptopFriendly: false,
   notes: '',
@@ -63,8 +63,9 @@ export default function RateScreen() {
   const shop = id ? shopById[id] : undefined;
 
   const [drinkType, setDrinkType] = useState<DrinkType>('coffee');
-  const [coffeeState, setCoffeeState] = useState<DrinkState>(DEFAULT_STATE);
-  const [matchaState, setMatchaState] = useState<DrinkState>(DEFAULT_STATE);
+  const [coffeeQuality, setCoffeeQuality] = useState<DrinkQuality>(DEFAULT_QUALITY);
+  const [matchaQuality, setMatchaQuality] = useState<DrinkQuality>(DEFAULT_QUALITY);
+  const [shared, setShared] = useState<SharedState>(DEFAULT_SHARED);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
@@ -74,63 +75,41 @@ export default function RateScreen() {
   const [sliderColor, setSliderColor] = useState(Colors.caramel);
 
   useEffect(() => {
-    const id = animVal.addListener(({ value }) => {
-      // Interpolate caramel (#C87941) → matcha (#3D7A56)
+    const listenerId = animVal.addListener(({ value }) => {
       const r = Math.round(200 - (200 - 61) * value);
       const g = Math.round(121 + (122 - 121) * value);
       const b = Math.round(65 - (65 - 86) * value);
       setSliderColor(`rgb(${r},${g},${b})`);
     });
-    return () => animVal.removeListener(id);
+    return () => animVal.removeListener(listenerId);
   }, []);
 
-  const accentAnim = animVal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [Colors.caramel, Colors.matcha],
-  });
-  const bgAnim = animVal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [Colors.cream, Colors.matchaLight],
-  });
-  const bodyBgAnim = animVal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [Colors.white, '#F7FBF8'],
-  });
+  const accentAnim = animVal.interpolate({ inputRange: [0, 1], outputRange: [Colors.caramel, Colors.matcha] });
+  const bgAnim = animVal.interpolate({ inputRange: [0, 1], outputRange: [Colors.cream, Colors.matchaLight] });
+  const bodyBgAnim = animVal.interpolate({ inputRange: [0, 1], outputRange: [Colors.white, '#F7FBF8'] });
 
-  // Load both drink types on mount
   useEffect(() => {
     async function prefill() {
-      if (!user || !isSupabaseConfigured() || !id) {
-        setLoading(false);
-        return;
-      }
+      if (!user || !isSupabaseConfigured() || !id) { setLoading(false); return; }
       try {
         const [coffee, matcha] = await Promise.all([
           getRating(user.id, id, 'coffee'),
           getRating(user.id, id, 'matcha'),
         ]);
-        if (coffee) setCoffeeState({
-          scores: {
-            coffee_quality: coffee.coffee_quality,
-            vibes: coffee.vibes,
-            seating: coffee.seating,
-          },
-          wifiGood: coffee.wifi_quality >= 3,
-          pastries: coffee.pastries ?? null,
-          laptopFriendly: coffee.laptop_friendly,
-          notes: coffee.notes ?? '',
-        });
-        if (matcha) setMatchaState({
-          scores: {
-            coffee_quality: matcha.coffee_quality,
-            vibes: matcha.vibes,
-            seating: matcha.seating,
-          },
-          wifiGood: matcha.wifi_quality >= 3,
-          pastries: matcha.pastries ?? null,
-          laptopFriendly: matcha.laptop_friendly,
-          notes: matcha.notes ?? '',
-        });
+        if (coffee) setCoffeeQuality({ coffee_quality: coffee.coffee_quality });
+        if (matcha) setMatchaQuality({ coffee_quality: matcha.coffee_quality });
+        // Shared fields come from whichever rating exists (coffee preferred)
+        const src = coffee ?? matcha;
+        if (src) {
+          setShared({
+            vibes: src.vibes,
+            seating: src.seating,
+            wifiGood: src.wifi_quality == null ? null : src.wifi_quality >= 3,
+            pastries: src.pastries ?? null,
+            laptopFriendly: src.laptop_friendly,
+            notes: src.notes ?? '',
+          });
+        }
       } catch {
         // silently fail
       } finally {
@@ -139,13 +118,6 @@ export default function RateScreen() {
     }
     prefill();
   }, [user, id]);
-
-  const currentState = drinkType === 'coffee' ? coffeeState : matchaState;
-  const setCurrentState = drinkType === 'coffee' ? setCoffeeState : setMatchaState;
-
-  function updateScore(key: keyof Scores, value: number) {
-    setCurrentState((prev) => ({ ...prev, scores: { ...prev.scores, [key]: value } }));
-  }
 
   function switchDrinkType(type: DrinkType) {
     if (type === drinkType) return;
@@ -158,24 +130,21 @@ export default function RateScreen() {
     }).start();
   }
 
+  const currentQuality = drinkType === 'coffee' ? coffeeQuality : matchaQuality;
+  const setCurrentQuality = drinkType === 'coffee' ? setCoffeeQuality : setMatchaQuality;
+
+  const wifiVal = shared.wifiGood === null ? 3 : shared.wifiGood ? 5 : 1;
   const overall = computeOverall(
-    currentState.scores.coffee_quality,
-    currentState.scores.vibes,
-    currentState.scores.seating,
-    currentState.wifiGood ? 5 : 1,
-    currentState.scores.work_friendliness,
-    currentState.pastries
+    currentQuality.coffee_quality,
+    shared.vibes,
+    shared.seating,
+    wifiVal,
+    shared.pastries
   );
 
   async function handleSave() {
-    if (!user || !shop) {
-      Alert.alert('Not signed in', 'Sign in to save ratings.');
-      return;
-    }
-    if (!isSupabaseConfigured()) {
-      Alert.alert('Not configured', 'Set up Supabase to save ratings.');
-      return;
-    }
+    if (!user || !shop) { Alert.alert('Not signed in', 'Sign in to save ratings.'); return; }
+    if (!isSupabaseConfigured()) { Alert.alert('Not configured', 'Set up Supabase to save ratings.'); return; }
     try {
       setSaving(true);
       await upsertShop(shop);
@@ -183,13 +152,15 @@ export default function RateScreen() {
         user_id: user.id,
         shop_id: shop.id,
         drink_type: drinkType,
-        ...currentState.scores,
-        wifi_quality: currentState.wifiGood ? 5 : 1,
+        coffee_quality: currentQuality.coffee_quality,
+        vibes: shared.vibes,
+        seating: shared.seating,
+        wifi_quality: shared.wifiGood === null ? 3 : shared.wifiGood ? 5 : 1,
         work_friendliness: 3,
-        pastries: currentState.pastries ?? undefined,
-        laptop_friendly: currentState.laptopFriendly,
+        pastries: shared.pastries ?? undefined,
+        laptop_friendly: shared.laptopFriendly,
         overall,
-        notes: currentState.notes.trim() || undefined,
+        notes: shared.notes.trim() || undefined,
         visited_at: new Date().toISOString(),
       });
       router.back();
@@ -203,9 +174,7 @@ export default function RateScreen() {
   if (!shop) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.center}>
-          <Text style={styles.errorText}>Shop not found.</Text>
-        </View>
+        <View style={styles.center}><Text style={styles.errorText}>Shop not found.</Text></View>
       </SafeAreaView>
     );
   }
@@ -213,20 +182,18 @@ export default function RateScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.center}>
-          <ActivityIndicator color={Colors.caramel} />
-        </View>
+        <View style={styles.center}><ActivityIndicator color={Colors.caramel} /></View>
       </SafeAreaView>
     );
   }
 
+  const isMatcha = drinkType === 'matcha';
+
   return (
     <Animated.View style={[styles.safeWrapper, { backgroundColor: bgAnim }]}>
       <SafeAreaView style={styles.safeInner}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
@@ -244,26 +211,16 @@ export default function RateScreen() {
           {/* Coffee / Matcha toggle */}
           <View style={styles.drinkToggleRow}>
             <TouchableOpacity
-              style={[
-                styles.drinkBtn,
-                drinkType === 'coffee' && { backgroundColor: Colors.caramel },
-              ]}
+              style={[styles.drinkBtn, !isMatcha && { backgroundColor: Colors.caramel }]}
               onPress={() => switchDrinkType('coffee')}
             >
-              <Text style={[styles.drinkBtnText, drinkType === 'coffee' && styles.drinkBtnTextActive]}>
-                ☕ Coffee
-              </Text>
+              <Text style={[styles.drinkBtnText, !isMatcha && styles.drinkBtnTextActive]}>☕ Coffee</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.drinkBtn,
-                drinkType === 'matcha' && { backgroundColor: Colors.matcha },
-              ]}
+              style={[styles.drinkBtn, isMatcha && { backgroundColor: Colors.matcha }]}
               onPress={() => switchDrinkType('matcha')}
             >
-              <Text style={[styles.drinkBtnText, drinkType === 'matcha' && styles.drinkBtnTextActive]}>
-                🍵 Matcha
-              </Text>
+              <Text style={[styles.drinkBtnText, isMatcha && styles.drinkBtnTextActive]}>🍵 Matcha</Text>
             </TouchableOpacity>
           </View>
 
@@ -274,9 +231,32 @@ export default function RateScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Criteria */}
-            {CRITERIA.map((c) => {
-              const val = currentState.scores[c.key];
+            {/* Coffee / Matcha quality — per drink */}
+            <View style={styles.criterionRow}>
+              <View style={styles.criterionMeta}>
+                <Text style={styles.criterionEmoji}>{isMatcha ? '🍵' : '☕'}</Text>
+                <Text style={styles.criterionLabel}>{isMatcha ? 'Matcha' : 'Coffee'}</Text>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={currentQuality.coffee_quality}
+                onValueChange={(v) => setCurrentQuality({ coffee_quality: v })}
+                minimumTrackTintColor={sliderColor}
+                maximumTrackTintColor={Colors.milk}
+                thumbTintColor={sliderColor}
+              />
+              <Animated.Text style={[styles.criterionScore, { color: accentAnim }]}>
+                {currentQuality.coffee_quality}
+                <Text style={styles.criterionMax}>/10</Text>
+              </Animated.Text>
+            </View>
+
+            {/* Shared criteria */}
+            {SHARED_CRITERIA.map((c) => {
+              const val = shared[c.key];
               return (
                 <View key={c.key} style={styles.criterionRow}>
                   <View style={styles.criterionMeta}>
@@ -289,7 +269,7 @@ export default function RateScreen() {
                     maximumValue={c.max}
                     step={1}
                     value={val}
-                    onValueChange={(v) => updateScore(c.key, v)}
+                    onValueChange={(v) => setShared((prev) => ({ ...prev, [c.key]: v }))}
                     minimumTrackTintColor={sliderColor}
                     maximumTrackTintColor={Colors.milk}
                     thumbTintColor={sliderColor}
@@ -302,46 +282,46 @@ export default function RateScreen() {
               );
             })}
 
-            {/* WiFi row */}
+            {/* WiFi row — shared */}
             <View style={styles.thumbRow}>
               <Text style={styles.criterionEmoji}>📶</Text>
               <Text style={styles.thumbRowLabel}>Has good WiFi?</Text>
               <View style={styles.thumbBtns}>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, currentState.wifiGood && { backgroundColor: sliderColor }]}
-                  onPress={() => setCurrentState((prev) => ({ ...prev, wifiGood: true }))}
+                  style={[styles.thumbBtn, shared.wifiGood === true && { backgroundColor: sliderColor, borderColor: sliderColor }]}
+                  onPress={() => setShared((prev) => ({ ...prev, wifiGood: prev.wifiGood === true ? null : true }))}
                 >
                   <Text style={styles.thumbIcon}>👍</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, !currentState.wifiGood && styles.thumbBtnActiveDown]}
-                  onPress={() => setCurrentState((prev) => ({ ...prev, wifiGood: false }))}
+                  style={[styles.thumbBtn, shared.wifiGood === false && styles.thumbBtnActiveDown]}
+                  onPress={() => setShared((prev) => ({ ...prev, wifiGood: prev.wifiGood === false ? null : false }))}
                 >
                   <Text style={styles.thumbIcon}>👎</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Pastries row */}
+            {/* Pastries row — shared */}
             <View style={styles.thumbRow}>
               <Text style={styles.criterionEmoji}>🥐</Text>
-              <Text style={styles.thumbRowLabel}>Pastries?</Text>
+              <Text style={styles.thumbRowLabel}>Has pastries?</Text>
               <View style={styles.thumbBtns}>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, currentState.pastries != null && { backgroundColor: sliderColor }]}
-                  onPress={() => setCurrentState((prev) => ({ ...prev, pastries: prev.pastries != null ? prev.pastries : 3 }))}
+                  style={[styles.thumbBtn, shared.pastries != null && { backgroundColor: sliderColor, borderColor: sliderColor }]}
+                  onPress={() => setShared((prev) => ({ ...prev, pastries: prev.pastries != null ? prev.pastries : 3 }))}
                 >
-                  <Text style={styles.thumbIcon}>👍</Text>
+                  <Ionicons name="checkmark" size={20} color={shared.pastries != null ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, currentState.pastries == null && styles.thumbBtnActiveDown]}
-                  onPress={() => setCurrentState((prev) => ({ ...prev, pastries: null }))}
+                  style={[styles.thumbBtn, shared.pastries == null && styles.thumbBtnActiveNeutral]}
+                  onPress={() => setShared((prev) => ({ ...prev, pastries: null }))}
                 >
-                  <Text style={styles.thumbIcon}>👎</Text>
+                  <Ionicons name="close" size={20} color={shared.pastries == null ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
               </View>
             </View>
-            {currentState.pastries != null && (
+            {shared.pastries != null && (
               <View style={styles.criterionRow}>
                 <View style={{ width: 90 }} />
                 <Slider
@@ -349,14 +329,14 @@ export default function RateScreen() {
                   minimumValue={1}
                   maximumValue={5}
                   step={1}
-                  value={currentState.pastries}
-                  onValueChange={(v) => setCurrentState((prev) => ({ ...prev, pastries: v }))}
+                  value={shared.pastries}
+                  onValueChange={(v) => setShared((prev) => ({ ...prev, pastries: v }))}
                   minimumTrackTintColor={sliderColor}
                   maximumTrackTintColor={Colors.milk}
                   thumbTintColor={sliderColor}
                 />
                 <Animated.Text style={[styles.criterionScore, { color: accentAnim }]}>
-                  {currentState.pastries}
+                  {shared.pastries}
                   <Text style={styles.criterionMax}>/5</Text>
                 </Animated.Text>
               </View>
@@ -364,13 +344,13 @@ export default function RateScreen() {
 
             <View style={styles.divider} />
 
-            {/* Laptop toggle */}
+            {/* Laptop toggle — shared */}
             <View style={styles.toggleRow}>
               <Text style={styles.toggleEmoji}>💻</Text>
               <Text style={styles.toggleLabel}>Laptop Friendly</Text>
               <Switch
-                value={currentState.laptopFriendly}
-                onValueChange={(v) => setCurrentState((prev) => ({ ...prev, laptopFriendly: v }))}
+                value={shared.laptopFriendly}
+                onValueChange={(v) => setShared((prev) => ({ ...prev, laptopFriendly: v }))}
                 trackColor={{ false: Colors.milk, true: sliderColor }}
                 thumbColor={Colors.white}
               />
@@ -378,15 +358,15 @@ export default function RateScreen() {
 
             <View style={styles.divider} />
 
-            {/* Notes */}
+            {/* Notes — shared */}
             <View style={styles.notesRow}>
               <Text style={styles.toggleEmoji}>📝</Text>
               <TextInput
                 style={styles.notesInput}
                 placeholder="Notes (optional)"
                 placeholderTextColor={Colors.muted}
-                value={currentState.notes}
-                onChangeText={(v) => setCurrentState((prev) => ({ ...prev, notes: v }))}
+                value={shared.notes}
+                onChangeText={(v) => setShared((prev) => ({ ...prev, notes: v }))}
                 returnKeyType="done"
                 onFocus={() => {
                   setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
@@ -407,6 +387,7 @@ export default function RateScreen() {
               </TouchableOpacity>
             </Animated.View>
           </View>
+
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Animated.View>
@@ -450,87 +431,47 @@ const styles = StyleSheet.create({
     padding: 3,
     gap: 3,
   },
-  drinkBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
+  drinkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
   drinkBtnText: { fontSize: 14, fontWeight: '700', color: Colors.muted },
   drinkBtnTextActive: { color: Colors.white },
 
   body: { flex: 1 },
-  bodyContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
+  bodyContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
 
-  criterionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  criterionMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: 90,
-    gap: 8,
-  },
+  criterionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  criterionMeta: { flexDirection: 'row', alignItems: 'center', width: 90, gap: 8 },
   criterionEmoji: { fontSize: 22 },
   criterionLabel: { fontSize: 14, fontWeight: '700', color: Colors.espresso },
   slider: { flex: 1, height: 40 },
   criterionScore: { fontSize: 18, fontWeight: '800', width: 42, textAlign: 'right' },
   criterionMax: { fontSize: 11, fontWeight: '500', color: Colors.muted },
 
-  thumbRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    gap: 8,
-  },
-  thumbRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.espresso,
-  },
-  thumbBtns: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  thumbRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
+  thumbRowLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.espresso },
+  thumbBtns: { flexDirection: 'row', gap: 8 },
   thumbBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: Colors.foam,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: Colors.milk,
   },
-  thumbBtnActiveDown: {
-    backgroundColor: '#E8554E',
-    borderColor: '#E8554E',
-  },
+  thumbBtnActiveDown: { backgroundColor: '#E8554E', borderColor: '#E8554E' },
+  thumbBtnActiveNeutral: { backgroundColor: Colors.muted, borderColor: Colors.muted },
   thumbIcon: { fontSize: 20 },
 
   divider: { height: 1, backgroundColor: Colors.foam, marginVertical: 10 },
 
-  toggleRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12,
-  },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   toggleEmoji: { fontSize: 22 },
   toggleLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.espresso },
 
-  notesRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12,
-  },
+  notesRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   notesInput: {
     flex: 1, fontSize: 15, color: Colors.espresso,
     paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.milk,
   },
 
-  footer: {
-    padding: 16, backgroundColor: Colors.white,
-    borderTopWidth: 1, borderTopColor: Colors.milk,
-  },
+  footer: { padding: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.milk },
   saveBtn: { borderRadius: 14, overflow: 'hidden' },
   saveBtnInner: { paddingVertical: 15, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },

@@ -12,7 +12,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../lib/colors';
-import { CoffeeShop, Rating } from '../../lib/types';
+import { CoffeeShop, Rating, DrinkType } from '../../lib/types';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { fetchNearby, isPlacesConfigured } from '../../lib/places';
@@ -37,7 +37,9 @@ export default function MapScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [areaShops, setAreaShops] = useState<CoffeeShop[]>([]);
   const [fetching, setFetching] = useState(false);
-  const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  const [coffeeRatings, setCoffeeRatings] = useState<Record<string, Rating>>({});
+  const [matchaRatings, setMatchaRatings] = useState<Record<string, Rating>>({});
+  const [drinkType, setDrinkType] = useState<DrinkType>('coffee');
 
   const { coords } = useLocation();
   const { shops: globalShops, addToCache } = useShops();
@@ -55,11 +57,14 @@ export default function MapScreen() {
     useCallback(() => {
       if (user && isSupabaseConfigured()) {
         getRatings(user.id).then((data) => {
-          const map: Record<string, Rating> = {};
+          const cm: Record<string, Rating> = {};
+          const mm: Record<string, Rating> = {};
           for (const r of data) {
-            if (!map[r.shop_id] || r.drink_type === 'coffee') map[r.shop_id] = r;
+            if ((r.drink_type ?? 'coffee') === 'coffee') cm[r.shop_id] = r;
+            else if (r.drink_type === 'matcha') mm[r.shop_id] = r;
           }
-          setRatings(map);
+          setCoffeeRatings(cm);
+          setMatchaRatings(mm);
         }).catch(() => {});
       }
       goToCurrentLocation();
@@ -95,6 +100,8 @@ export default function MapScreen() {
       }
     }, 700);
   }, [globalShops]);
+
+  const ratings = drinkType === 'coffee' ? coffeeRatings : matchaRatings;
 
   const shopsWithCoords = areaShops.filter((s) => s.lat && s.lng);
 
@@ -191,10 +198,24 @@ export default function MapScreen() {
       {/* Header overlay — only shown in full map mode */}
       <SafeAreaView style={[styles.overlay, viewMode === 'list' && { display: 'none' }]} pointerEvents="box-none">
         <View style={styles.titleBox}>
-          <Text style={styles.title}>{viewMode === 'map' ? 'Map' : 'Nearby'}</Text>
+          <Text style={styles.title}>Map</Text>
           <Text style={styles.subtitle}>
             {fetching ? 'Loading…' : `${areaShops.length} spots`}
           </Text>
+        </View>
+        <View style={styles.drinkToggle} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.drinkBtn, drinkType === 'coffee' && styles.drinkBtnActiveCoffee]}
+            onPress={() => setDrinkType('coffee')}
+          >
+            <Text style={styles.drinkBtnText}>☕</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.drinkBtn, drinkType === 'matcha' && styles.drinkBtnActiveMatcha]}
+            onPress={() => setDrinkType('matcha')}
+          >
+            <Text style={styles.drinkBtnText}>🍵</Text>
+          </TouchableOpacity>
         </View>
         {fetching && (
           <View style={styles.fetchingPill}>
@@ -259,6 +280,23 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '800', color: Colors.roast },
   subtitle: { fontSize: 11, color: Colors.muted, marginTop: 1 },
+
+  drinkToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 3,
+    gap: 3,
+    shadowColor: Colors.espresso,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  drinkBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9 },
+  drinkBtnActiveCoffee: { backgroundColor: Colors.caramel },
+  drinkBtnActiveMatcha: { backgroundColor: Colors.matcha },
+  drinkBtnText: { fontSize: 16 },
 
   fetchingPill: {
     flexDirection: 'row',
