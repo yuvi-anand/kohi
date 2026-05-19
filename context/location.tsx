@@ -27,30 +27,50 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    let sub: Location.LocationSubscription | null = null;
     let cancelled = false;
-    async function request() {
+
+    async function start() {
       setLoading(true);
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           if (!cancelled) setPermissionDenied(true);
+          setLoading(false);
           return;
         }
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (!cancelled) {
-          setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-          setPermissionDenied(false);
-        }
+        // Get an immediate position first
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (!cancelled) {
+            setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+            setPermissionDenied(false);
+          }
+        } catch { /* will still get updates from watch */ }
+
+        // Then watch for updates
+        sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 50 },
+          (loc) => {
+            if (!cancelled) {
+              setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+            }
+          }
+        );
       } catch {
-        // location unavailable — leave coords null
+        // location unavailable
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-    request();
-    return () => { cancelled = true; };
+
+    start();
+    return () => {
+      cancelled = true;
+      sub?.remove();
+    };
   }, [tick]);
 
   return (

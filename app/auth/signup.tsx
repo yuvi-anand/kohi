@@ -37,7 +37,8 @@ export default function SignupScreen() {
     } else {
       Alert.alert(
         'Check your email',
-        'We sent you a confirmation link. Click it to activate your account.'
+        'We sent you a confirmation link. After confirming, open the app and you\'ll be taken to set up your profile.',
+        [{ text: 'OK' }]
       );
     }
   }

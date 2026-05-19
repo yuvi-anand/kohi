@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,18 @@ import {
   Keyboard,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { CoffeeShop } from '../../lib/types';
+import { CoffeeShop, Rating } from '../../lib/types';
 import { Colors } from '../../lib/colors';
 import { MOCK_SHOPS } from '../../lib/mockShops';
 import { searchPlaces, isPlacesConfigured } from '../../lib/places';
+import { getRatings } from '../../lib/api';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
+import { useAuth } from '../../context/auth';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
@@ -31,11 +34,15 @@ export default function SearchScreen() {
   const [geocoding, setGeocoding] = useState(false);
   const [isDefaultLocation, setIsDefaultLocation] = useState(true);
 
+  const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
+  const [openNowOnly, setOpenNowOnly] = useState(false);
+
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const geocodeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const { coords } = useLocation();
   const { addToCache } = useShops();
+  const { user } = useAuth();
 
   // Reverse geocode current position to get city name as default
   useEffect(() => {
@@ -80,6 +87,24 @@ export default function SearchScreen() {
       if (geocodeDebounce.current) clearTimeout(geocodeDebounce.current);
     };
   }, [locationText, isDefaultLocation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setQuery('');
+        setResults(isPlacesConfigured() ? [] : MOCK_SHOPS);
+      };
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !isSupabaseConfigured()) return;
+      getRatings(user.id).then((ratings) => {
+        setRatedIds(new Set(ratings.map((r) => r.shop_id)));
+      }).catch(() => {});
+    }, [user])
+  );
 
   // Search whenever query or locationCoords changes
   useEffect(() => {
@@ -207,6 +232,20 @@ export default function SearchScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+        {/* Open now filter */}
+        <TouchableOpacity
+          style={[styles.filterChip, openNowOnly && styles.filterChipActive]}
+          onPress={() => setOpenNowOnly((v) => !v)}
+        >
+          <Ionicons
+            name="time-outline"
+            size={13}
+            color={openNowOnly ? Colors.white : Colors.muted}
+          />
+          <Text style={[styles.filterChipText, openNowOnly && styles.filterChipTextActive]}>
+            Open now
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {error && (
@@ -216,7 +255,7 @@ export default function SearchScreen() {
       )}
 
       <FlatList
-        data={results}
+        data={openNowOnly ? results.filter((s) => s.open_now === true) : results}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -231,12 +270,18 @@ export default function SearchScreen() {
                 {item.neighborhood ?? item.address}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.rateBtn}
-              onPress={() => navigateTo(item, 'rate')}
-            >
-              <Text style={styles.rateBtnText}>Rate</Text>
-            </TouchableOpacity>
+            {ratedIds.has(item.id) ? (
+              <View style={styles.ratedBtn}>
+                <Text style={styles.ratedBtnText}>Rated</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.rateBtn}
+                onPress={() => navigateTo(item, 'rate')}
+              >
+                <Text style={styles.rateBtnText}>Rate</Text>
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -296,6 +341,25 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 15, color: Colors.espresso },
 
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.milk,
+    backgroundColor: Colors.foam,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.caramel,
+    borderColor: Colors.caramel,
+  },
+  filterChipText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
+  filterChipTextActive: { color: Colors.white },
+
   errorBanner: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -324,6 +388,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   rateBtnText: { color: Colors.white, fontSize: 13, fontWeight: '600' },
+  ratedBtn: {
+    backgroundColor: Colors.foam,
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.milk,
+  },
+  ratedBtnText: { color: Colors.muted, fontSize: 13, fontWeight: '500' },
   separator: { height: 1, backgroundColor: Colors.foam, marginLeft: 42 },
   empty: { paddingTop: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: Colors.muted },

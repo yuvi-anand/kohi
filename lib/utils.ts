@@ -1,9 +1,7 @@
 import { Rating } from './types';
 
-// coffee/vibes are 1–10; seating/wifi/pastries are 1–5
-// pastries may be null (N/A) — excluded from score when null
-// without pastries: coffee 40%, vibes 35%, seating 15%, wifi 10%
-// with pastries: coffee 38%, vibes 33%, seating 14%, wifi 9%, pastries 6%
+// coffee 60%, vibes 40% — seating/wifi/pastries are informational only
+// with pastries: coffee 57%, vibes 37%, pastries 6%
 export function computeOverall(
   coffee_quality: number,
   vibes: number,
@@ -13,18 +11,14 @@ export function computeOverall(
 ): number {
   if (pastries != null) {
     const score =
-      (coffee_quality / 10) * 0.38 +
-      (vibes / 10) * 0.33 +
-      (seating / 5) * 0.14 +
-      (wifi_quality / 5) * 0.09 +
+      (coffee_quality / 10) * 0.52 +
+      (vibes / 10) * 0.42 +
       (pastries / 5) * 0.06;
     return Math.round(score * 100) / 10;
   }
   const score =
-    (coffee_quality / 10) * 0.40 +
-    (vibes / 10) * 0.35 +
-    (seating / 5) * 0.15 +
-    (wifi_quality / 5) * 0.10;
+    (coffee_quality / 10) * 0.55 +
+    (vibes / 10) * 0.45;
   return Math.round(score * 100) / 10;
 }
 

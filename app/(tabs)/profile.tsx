@@ -219,25 +219,29 @@ export default function ProfileScreen() {
         )}
 
         {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{ratingCount}</Text>
-            <Text style={styles.statLabel}>Rated</Text>
+        <View style={styles.statsCard}>
+          <View style={styles.statsRow}>
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(tabs)/mylist')}>
+              <Text style={styles.statNumber}>{ratingCount}</Text>
+              <Text style={styles.statLabel}>Rated</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(tabs)/mylist')}>
+              <Text style={styles.statNumber}>{bookmarkCount}</Text>
+              <Text style={styles.statLabel}>Saved</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{bookmarkCount}</Text>
-            <Text style={styles.statLabel}>Saved</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{followCounts.following}</Text>
-            <Text style={styles.statLabel}>Following</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{followCounts.followers}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
+          <View style={styles.statRowDivider} />
+          <View style={styles.statsRow}>
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/find-friends')}>
+              <Text style={styles.statNumber}>{followCounts.following}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/find-friends')}>
+              <Text style={styles.statNumber}>{followCounts.followers}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -363,15 +367,16 @@ const styles = StyleSheet.create({
   },
   setupPromptText: { fontSize: 13, color: Colors.caramel, fontWeight: '500', textAlign: 'center' },
 
-  statsRow: {
-    flexDirection: 'row',
+  statsCard: {
     backgroundColor: Colors.white,
-    marginHorizontal: 16, borderRadius: 8, padding: 20,
+    marginHorizontal: 16, borderRadius: 8,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
     marginBottom: 16,
   },
+  statsRow: { flexDirection: 'row', padding: 20 },
+  statRowDivider: { height: 1, backgroundColor: Colors.foam, marginHorizontal: 20 },
   statCard: { flex: 1, alignItems: 'center' },
   statDivider: { width: 1, backgroundColor: Colors.milk },
   statNumber: { fontSize: 28, fontWeight: '700', color: Colors.roast },

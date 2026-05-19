@@ -12,11 +12,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../lib/colors';
-import { CoffeeShop, Rating, DrinkType, ReelSave } from '../../lib/types';
+import { CoffeeShop, Rating, DrinkType, ReelSave, Bookmark } from '../../lib/types';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { fetchNearby, isPlacesConfigured } from '../../lib/places';
-import { getRatings, getReelSaves } from '../../lib/api';
+import { getRatings, getReelSaves, getBookmarks } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { formatScore, overallColor } from '../../lib/utils';
@@ -41,6 +41,7 @@ export default function MapScreen() {
   const [matchaRatings, setMatchaRatings] = useState<Record<string, Rating>>({});
   const [drinkType, setDrinkType] = useState<DrinkType>('coffee');
   const [reelSaves, setReelSaves] = useState<ReelSave[]>([]);
+  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
 
   const { coords } = useLocation();
   const { shops: globalShops, addToCache, shopById } = useShops();
@@ -68,6 +69,9 @@ export default function MapScreen() {
           setMatchaRatings(mm);
         }).catch(() => {});
         getReelSaves(user.id).then(setReelSaves).catch(() => {});
+        getBookmarks(user.id).then((bmarks) => {
+          setBookmarks(new Set(bmarks.map((b) => b.shop_id)));
+        }).catch(() => {});
       }
       goToCurrentLocation();
     }, [user, coords])
@@ -133,6 +137,7 @@ export default function MapScreen() {
           return (
             <Marker
               key={shop.id}
+              tracksViewChanges={false}
               coordinate={{ latitude: shop.lat!, longitude: shop.lng! }}
               onPress={() => setSelectedId(shop.id)}
             >
@@ -143,10 +148,12 @@ export default function MapScreen() {
                   isSelected && styles.pinSelected,
                 ]}>
                   <Text style={styles.pinRatedText}>{formatScore(r.overall)}</Text>
+                  {bookmarks.has(shop.id) && <View style={styles.pinBookmarkDot} />}
                 </View>
               ) : (
                 <View style={[styles.pin, isSelected && styles.pinSelected]}>
                   <Text style={styles.pinText}>☕</Text>
+                  {bookmarks.has(shop.id) && <View style={styles.pinBookmarkDot} />}
                 </View>
               )}
               <Callout onPress={() => router.push(`/shop/${shop.id}`)}>
@@ -166,6 +173,7 @@ export default function MapScreen() {
             return (
               <Marker
                 key={`reel-${rs.id}`}
+                tracksViewChanges={false}
                 coordinate={{ latitude: shop.lat!, longitude: shop.lng! }}
                 onPress={() => router.push(`/shop/${shop.id}`)}
               >
@@ -393,6 +401,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2, shadowRadius: 3, elevation: 4,
   },
   pinSelected: { transform: [{ scale: 1.2 }], borderColor: Colors.roast },
+  pinBookmarkDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.caramel,
+    borderWidth: 1.5,
+    borderColor: Colors.white,
+  },
   pinText: { fontSize: 18 },
   pinRatedText: { fontSize: 13, fontWeight: '700', color: Colors.white },
 

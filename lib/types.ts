@@ -12,7 +12,16 @@ export interface CoffeeShop {
   price_level?: PriceLevel;
   website?: string;
   phone?: string;
+  hours?: string[] | null;
+  open_now?: boolean | null;
   created_at?: string;
+}
+
+export interface ShopStats {
+  avg_overall: number;
+  avg_coffee: number;
+  avg_vibes: number;
+  rating_count: number;
 }
 
 export type DrinkType = 'coffee' | 'matcha';

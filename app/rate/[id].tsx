@@ -24,7 +24,7 @@ import { useShops } from '../../context/shops';
 import { getRating, getRatings, upsertRating, upsertShop } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { computeOverall, formatScore, overallColor } from '../../lib/utils';
+import { computeOverall } from '../../lib/utils';
 
 // Per-drink: only the quality score differs between coffee and matcha
 type DrinkQuality = { coffee_quality: number };
@@ -183,7 +183,14 @@ export default function RateScreen() {
         notes: shared.notes.trim() || undefined,
         visited_at: new Date().toISOString(),
       });
-      router.back();
+      router.replace({
+        pathname: '/rating-result',
+        params: {
+          shopName: shop.name,
+          overall: String(overall),
+          shopId: shop.id,
+        },
+      });
     } catch (e: any) {
       Alert.alert('Error saving', e.message);
     } finally {
@@ -223,9 +230,6 @@ export default function RateScreen() {
             <View style={styles.headerCenter}>
               <Text style={styles.headerLabel}>RATING</Text>
               <Text style={styles.headerShop} numberOfLines={1}>{shop.name}</Text>
-            </View>
-            <View style={[styles.overallBadge, { backgroundColor: overallColor(overall) }]}>
-              <Text style={styles.overallText}>{formatScore(overall)}</Text>
             </View>
           </View>
 
@@ -476,9 +480,6 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1, marginHorizontal: 12 },
   headerLabel: { fontSize: 10, fontWeight: '700', color: Colors.muted, letterSpacing: 1 },
   headerShop: { fontSize: 15, fontWeight: '700', color: Colors.espresso },
-  overallBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  overallText: { color: Colors.white, fontSize: 13, fontWeight: '700' },
-
   drinkToggleRow: {
     flexDirection: 'row',
     marginHorizontal: 16,

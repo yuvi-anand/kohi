@@ -10,10 +10,11 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { CoffeeShop, Rating } from '../../lib/types';
+import { CoffeeShop, Rating, ShopStats } from '../../lib/types';
 import { Colors } from '../../lib/colors';
 import { useShops } from '../../context/shops';
 import {
@@ -22,6 +23,7 @@ import {
   addBookmark,
   removeBookmark,
   upsertShop,
+  getShopStats,
 } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -31,7 +33,6 @@ import { formatScore, overallColor, priceString } from '../../lib/utils';
 const CRITERIA: { key: keyof Rating; label: string; emoji: string; max: number }[] = [
   { key: 'coffee_quality', label: 'Coffee Quality', emoji: '☕', max: 10 },
   { key: 'vibes', label: 'Vibes', emoji: '✨', max: 10 },
-  { key: 'seating', label: 'Seating', emoji: '🪑', max: 5 },
 ];
 
 export default function ShopDetailScreen() {
@@ -46,6 +47,8 @@ export default function ShopDetailScreen() {
   const [bookmarked, setBookmarked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [bookmarkLoading, setBookmarkLoading] = useState(false);
+  const [shopStats, setShopStats] = useState<ShopStats | null>(null);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
   const load = useCallback(async () => {
     if (!user || !isSupabaseConfigured() || !id) return;
@@ -57,6 +60,7 @@ export default function ShopDetailScreen() {
       ]);
       setRating(r);
       setBookmarked(bookmarks.some((b) => b.shop_id === id));
+      getShopStats(id).then(setShopStats).catch(() => {});
     } catch {
       // silently fail
     } finally {
@@ -109,6 +113,13 @@ export default function ShopDetailScreen() {
     ]);
   }
 
+  function handleShare() {
+    Share.share({
+      message: `Check out ${shop!.name} on Kōhī!\n${shop!.address}`,
+      title: shop!.name,
+    });
+  }
+
   if (!shop) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -129,7 +140,7 @@ export default function ShopDetailScreen() {
           )}
           <View style={styles.heroOverlay} />
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} color={Colors.white} />
+            <Ionicons name="close" size={22} color={Colors.white} />
           </TouchableOpacity>
           {!shop.photo_url && (
             <Text style={styles.heroInitial}>{shop.name[0].toUpperCase()}</Text>
@@ -146,6 +157,26 @@ export default function ShopDetailScreen() {
                 {shop.address}
                 {shop.price_level ? `  ·  ${priceString(shop.price_level)}` : ''}
               </Text>
+              {shop.hours && shop.hours.length > 0 && (
+                <TouchableOpacity
+                  style={styles.hoursRow}
+                  onPress={() => setHoursExpanded((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={13} color={Colors.muted} />
+                  <Text style={styles.hoursToggle}>
+                    {hoursExpanded ? 'Hide hours' : 'Show hours'}
+                  </Text>
+                  <Ionicons name={hoursExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={Colors.muted} />
+                </TouchableOpacity>
+              )}
+              {hoursExpanded && shop.hours && (
+                <View style={styles.hoursBox}>
+                  {shop.hours.map((line: string, i: number) => (
+                    <Text key={i} style={styles.hoursLine}>{line}</Text>
+                  ))}
+                </View>
+              )}
             </View>
             {rating && (
               <View
@@ -192,6 +223,11 @@ export default function ShopDetailScreen() {
               <Ionicons name="navigate-outline" size={18} color={Colors.caramel} />
               <Text style={styles.actionText}>Navigate</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+              <Ionicons name="share-outline" size={18} color={Colors.caramel} />
+              <Text style={styles.actionText}>Share</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -214,15 +250,71 @@ export default function ShopDetailScreen() {
               />
             ))}
 
+            {shopStats && shopStats.rating_count > 1 && (
+              <View style={styles.globalStatsBox}>
+                <Text style={styles.globalStatsTitle}>Community ({shopStats.rating_count} ratings)</Text>
+                <View style={styles.globalStatsRow}>
+                  <View style={styles.globalStat}>
+                    <Text style={styles.globalStatVal}>{shopStats.avg_overall}</Text>
+                    <Text style={styles.globalStatLabel}>Avg Overall</Text>
+                  </View>
+                  <View style={styles.globalStat}>
+                    <Text style={styles.globalStatVal}>{shopStats.avg_coffee}</Text>
+                    <Text style={styles.globalStatLabel}>Coffee</Text>
+                  </View>
+                  <View style={styles.globalStat}>
+                    <Text style={styles.globalStatVal}>{shopStats.avg_vibes}</Text>
+                    <Text style={styles.globalStatLabel}>Vibes</Text>
+                  </View>
+                  {rating && (
+                    <View style={[styles.globalStat, styles.globalStatHighlight]}>
+                      <Text style={[styles.globalStatVal, { color: Colors.caramel }]}>
+                        {rating.overall > shopStats.avg_overall ? '+' : ''}{(rating.overall - shopStats.avg_overall).toFixed(1)}
+                      </Text>
+                      <Text style={styles.globalStatLabel}>vs You</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
             <View style={styles.divider} />
 
             <View style={styles.laptopRow}>
               <Text style={styles.laptopLabel}>Good WiFi</Text>
-              <View style={[styles.laptopBadge, { backgroundColor: (rating.wifi_quality ?? 1) >= 3 ? Colors.success : Colors.milk }]}>
-                <Text style={[styles.laptopBadgeText, { color: (rating.wifi_quality ?? 1) >= 3 ? Colors.white : Colors.muted }]}>
-                  {(rating.wifi_quality ?? 1) >= 3 ? 'Yes' : 'No'}
+              <View style={[styles.laptopBadge, {
+                backgroundColor: rating.wifi_quality >= 4 ? Colors.success : rating.wifi_quality <= 2 ? Colors.milk : Colors.foam
+              }]}>
+                <Text style={[styles.laptopBadgeText, {
+                  color: rating.wifi_quality >= 4 ? Colors.white : Colors.muted
+                }]}>
+                  {rating.wifi_quality >= 4 ? 'Yes' : rating.wifi_quality <= 2 ? 'No' : '?'}
                 </Text>
               </View>
+            </View>
+
+            <View style={[styles.laptopRow, { marginTop: 10 }]}>
+              <Text style={styles.laptopLabel}>Enough Seating</Text>
+              <View style={[styles.laptopBadge, {
+                backgroundColor: rating.seating >= 4 ? Colors.success : rating.seating <= 2 ? Colors.milk : Colors.foam
+              }]}>
+                <Text style={[styles.laptopBadgeText, {
+                  color: rating.seating >= 4 ? Colors.white : Colors.muted
+                }]}>
+                  {rating.seating >= 4 ? 'Yes' : rating.seating <= 2 ? 'No' : '?'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.laptopRow, { marginTop: 10 }]}>
+              <Text style={styles.laptopLabel}>Pastries</Text>
+              {rating.pastries != null ? (
+                <View style={[styles.laptopBadge, { backgroundColor: Colors.foam }]}>
+                  <Text style={[styles.laptopBadgeText, { color: Colors.muted }]}>{rating.pastries}/5</Text>
+                </View>
+              ) : (
+                <Text style={[styles.laptopBadgeText, { color: Colors.muted }]}>N/A</Text>
+              )}
             </View>
 
             <View style={[styles.laptopRow, { marginTop: 10 }]}>
@@ -441,6 +533,19 @@ const styles = StyleSheet.create({
     color: Colors.espresso,
     lineHeight: 20,
   },
+  hoursRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  hoursToggle: { fontSize: 12, color: Colors.muted },
+  hoursBox: { marginTop: 6, gap: 2 },
+  hoursLine: { fontSize: 12, color: Colors.muted, lineHeight: 18 },
+  globalStatsBox: {
+    backgroundColor: Colors.foam, borderRadius: 6, padding: 12, marginBottom: 14,
+  },
+  globalStatsTitle: { fontSize: 11, fontWeight: '700', color: Colors.muted, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' },
+  globalStatsRow: { flexDirection: 'row', gap: 8 },
+  globalStat: { flex: 1, alignItems: 'center' },
+  globalStatHighlight: { borderLeftWidth: 1, borderLeftColor: Colors.milk },
+  globalStatVal: { fontSize: 16, fontWeight: '700', color: Colors.espresso },
+  globalStatLabel: { fontSize: 10, color: Colors.muted, marginTop: 2 },
   unratedCard: {
     backgroundColor: Colors.white,
     marginHorizontal: 16,

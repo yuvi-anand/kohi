@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ReelSave } from './types';
+import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ReelSave, ShopStats } from './types';
 
 export async function upsertShop(shop: CoffeeShop): Promise<void> {
   const { error } = await supabase.from('coffee_shops').upsert(
@@ -216,6 +216,16 @@ export async function getReelSaves(userId: string): Promise<ReelSave[]> {
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getShopStats(shopId: string): Promise<ShopStats | null> {
+  const { data, error } = await supabase
+    .from('shop_rating_stats')
+    .select('avg_overall, avg_coffee, avg_vibes, rating_count')
+    .eq('shop_id', shopId)
+    .maybeSingle();
+  if (error) return null;
+  return data;
 }
 
 export async function searchUsers(query: string, currentUserId: string): Promise<UserResult[]> {

@@ -5,7 +5,7 @@ const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '';
 export const isPlacesConfigured = (): boolean => API_KEY.length > 0;
 
 const BASE = 'https://places.googleapis.com/v1';
-const FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.priceLevel,places.photos';
+const FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.priceLevel,places.photos,places.regularOpeningHours,places.addressComponents';
 
 interface NewPlace {
   id: string;
@@ -14,6 +14,8 @@ interface NewPlace {
   location?: { latitude: number; longitude: number };
   priceLevel?: string;
   photos?: { name: string }[];
+  addressComponents?: { longText: string; types: string[] }[];
+  regularOpeningHours?: { weekdayDescriptions?: string[]; openNow?: boolean };
 }
 
 function parsePriceLevel(level?: string): CoffeeShop['price_level'] {
@@ -36,6 +38,11 @@ function toShop(p: NewPlace): CoffeeShop {
     google_place_id: p.id,
     name: p.displayName?.text ?? 'Unknown',
     address: p.formattedAddress ?? '',
+    neighborhood: p.addressComponents?.find(
+      (c: any) => c.types?.includes('neighborhood') || c.types?.includes('sublocality_level_1')
+    )?.longText ?? undefined,
+    hours: p.regularOpeningHours?.weekdayDescriptions ?? null,
+    open_now: p.regularOpeningHours?.openNow ?? null,
     lat: p.location?.latitude,
     lng: p.location?.longitude,
     price_level: parsePriceLevel(p.priceLevel),

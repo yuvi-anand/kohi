@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from '../context/auth';
 import { LocationProvider } from '../context/location';
 import { ShopsProvider } from '../context/shops';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { getProfile } from '../lib/api';
 
 function RootLayoutNav() {
   const { session, loading } = useAuth();
@@ -17,11 +18,20 @@ function RootLayoutNav() {
     if (!isSupabaseConfigured()) return;
 
     const inAuthGroup = segments[0] === 'auth';
+    const inOnboarding = segments[0] === 'onboarding';
 
     if (!session && !inAuthGroup) {
       router.replace('/auth/login');
     } else if (session && inAuthGroup) {
-      router.replace('/');
+      getProfile(session.user.id).then((profile) => {
+        if (!profile?.username) {
+          router.replace('/onboarding');
+        } else {
+          router.replace('/');
+        }
+      }).catch(() => {
+        router.replace('/');
+      });
     }
   }, [session, loading, segments]);
 
@@ -31,7 +41,7 @@ function RootLayoutNav() {
       <Stack.Screen name="auth" />
       <Stack.Screen
         name="shop/[id]"
-        options={{ presentation: 'card', animation: 'slide_from_right' }}
+        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
       />
       <Stack.Screen
         name="rate/[id]"
@@ -40,6 +50,14 @@ function RootLayoutNav() {
       <Stack.Screen
         name="settings"
         options={{ presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="rating-result"
+        options={{ presentation: 'modal', animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="onboarding"
+        options={{ presentation: 'card', animation: 'fade' }}
       />
     </Stack>
   );
