@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ReelSave, ShopStats } from './types';
+import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ShopStats } from './types';
+// ReelSave import removed — reel feature commented out
 
 export async function upsertShop(shop: CoffeeShop): Promise<void> {
   const { error } = await supabase.from('coffee_shops').upsert(
@@ -189,33 +190,41 @@ export async function getFriendFeed(userId: string): Promise<FeedItem[]> {
   }));
 }
 
-export async function processReel(url: string): Promise<{
-  platform: string;
-  extracted_name: string;
-  extracted_summary: string | null;
-  source_caption: string;
-  thumbnail_url: string | null;
-  shop: { id: string; name: string; address: string; lat: number | null; lng: number | null; photo_url: string | null } | null;
-}> {
-  const { data, error } = await supabase.functions.invoke('process-reel', { body: { url } });
-  if (error) throw error;
-  if (data.error) throw new Error(data.error);
-  return data;
-}
+// REEL SAVE FEATURE — commented out, infrastructure saved for later
+// export async function processReel(url: string): Promise<{...}> {
+//   const { data, error } = await supabase.functions.invoke('process-reel', { body: { url } });
+//   if (error) throw error;
+//   if (data.error) throw new Error(data.error);
+//   return data;
+// }
+// export async function saveReelSave(save: ReelSave): Promise<void> {
+//   const { error } = await supabase.from('reel_saves').insert(save);
+//   if (error) throw error;
+// }
+// export async function getReelSaves(userId: string): Promise<ReelSave[]> {
+//   const { data, error } = await supabase
+//     .from('reel_saves').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+//   if (error) throw error;
+//   return data ?? [];
+// }
 
-export async function saveReelSave(save: ReelSave): Promise<void> {
-  const { error } = await supabase.from('reel_saves').insert(save);
-  if (error) throw error;
-}
-
-export async function getReelSaves(userId: string): Promise<ReelSave[]> {
+export async function getShopStatsBatch(shopIds: string[]): Promise<Record<string, ShopStats>> {
+  if (shopIds.length === 0) return {};
   const { data, error } = await supabase
-    .from('reel_saves')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+    .from('shop_rating_stats')
+    .select('shop_id, avg_overall, avg_coffee, avg_vibes, rating_count')
+    .in('shop_id', shopIds);
+  if (error) return {};
+  const map: Record<string, ShopStats> = {};
+  for (const row of (data ?? [])) {
+    map[(row as any).shop_id] = {
+      avg_overall: row.avg_overall,
+      avg_coffee: row.avg_coffee,
+      avg_vibes: row.avg_vibes,
+      rating_count: row.rating_count,
+    };
+  }
+  return map;
 }
 
 export async function getShopStats(shopId: string): Promise<ShopStats | null> {

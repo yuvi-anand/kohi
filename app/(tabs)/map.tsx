@@ -12,11 +12,13 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../lib/colors';
-import { CoffeeShop, Rating, DrinkType, ReelSave, Bookmark } from '../../lib/types';
+import { CoffeeShop, Rating, DrinkType, Bookmark } from '../../lib/types';
+// ReelSave import removed — reel feature commented out
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { fetchNearby, isPlacesConfigured } from '../../lib/places';
-import { getRatings, getReelSaves, getBookmarks } from '../../lib/api';
+import { getRatings, getBookmarks } from '../../lib/api';
+// getReelSaves import removed — reel feature commented out
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { formatScore, overallColor } from '../../lib/utils';
@@ -40,8 +42,11 @@ export default function MapScreen() {
   const [coffeeRatings, setCoffeeRatings] = useState<Record<string, Rating>>({});
   const [matchaRatings, setMatchaRatings] = useState<Record<string, Rating>>({});
   const [drinkType, setDrinkType] = useState<DrinkType>('coffee');
-  const [reelSaves, setReelSaves] = useState<ReelSave[]>([]);
+  // const [reelSaves, setReelSaves] = useState<ReelSave[]>([]); // reel feature commented out
   const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
+
+  const [stableShops, setStableShops] = useState<CoffeeShop[]>([]);
+  const stabilizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { coords } = useLocation();
   const { shops: globalShops, addToCache, shopById } = useShops();
@@ -53,6 +58,18 @@ export default function MapScreen() {
       setAreaShops(globalShops);
     }
   }, [globalShops]);
+
+  // Stabilize the shop list before passing to MapView markers —
+  // prevents the insertReactSubview:atIndex: crash caused by rapid array changes
+  useEffect(() => {
+    if (stabilizeTimer.current) clearTimeout(stabilizeTimer.current);
+    stabilizeTimer.current = setTimeout(() => {
+      setStableShops(areaShops.filter((s) => s.lat && s.lng));
+    }, 80);
+    return () => {
+      if (stabilizeTimer.current) clearTimeout(stabilizeTimer.current);
+    };
+  }, [areaShops]);
 
   // Reload ratings + re-center on current location every time the tab focuses
   useFocusEffect(
@@ -68,7 +85,7 @@ export default function MapScreen() {
           setCoffeeRatings(cm);
           setMatchaRatings(mm);
         }).catch(() => {});
-        getReelSaves(user.id).then(setReelSaves).catch(() => {});
+        // getReelSaves(user.id).then(setReelSaves).catch(() => {}); // reel feature commented out
         getBookmarks(user.id).then((bmarks) => {
           setBookmarks(new Set(bmarks.map((b) => b.shop_id)));
         }).catch(() => {});
@@ -166,7 +183,8 @@ export default function MapScreen() {
             </Marker>
           );
         })}
-        {reelSaves
+        {/* REEL SAVE MARKERS — commented out, infrastructure saved for later */}
+        {/* {reelSaves
           .filter((rs) => rs.shop_id && shopById[rs.shop_id!]?.lat && shopById[rs.shop_id!]?.lng)
           .map((rs) => {
             const shop = shopById[rs.shop_id!]!;
@@ -183,7 +201,7 @@ export default function MapScreen() {
               </Marker>
             );
           })
-        }
+        } */}
       </MapView>
 
       {/* List view — sits below the mini-map */}
@@ -261,14 +279,14 @@ export default function MapScreen() {
         <Ionicons name="locate" size={20} color={Colors.caramel} />
       </TouchableOpacity>
 
-      {/* Add from Reel button */}
-      <TouchableOpacity
+      {/* Add from Reel button — commented out, infrastructure saved for later */}
+      {/* <TouchableOpacity
         style={styles.reelBtn}
         onPress={() => router.push('/add-reel')}
         activeOpacity={0.85}
       >
         <Ionicons name="link" size={20} color={Colors.white} />
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* Toggle button — bottom right */}
       <TouchableOpacity
@@ -438,32 +456,18 @@ const styles = StyleSheet.create({
   unratedText: { fontSize: 11, color: Colors.muted, fontWeight: '500' },
   separator: { height: 1, backgroundColor: Colors.foam, marginLeft: 50 },
 
-  reelBtn: {
-    position: 'absolute',
-    bottom: 32,
-    alignSelf: 'center',
-    left: '50%',
-    marginLeft: -26,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.roast,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.roast,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-
-  reelPin: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: Colors.roast,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: Colors.white,
-    shadowColor: Colors.espresso,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2, shadowRadius: 3, elevation: 4,
-  },
+  // REEL FEATURE STYLES — commented out, infrastructure saved for later
+  // reelBtn: {
+  //   position: 'absolute', bottom: 32, alignSelf: 'center',
+  //   left: '50%', marginLeft: -26, width: 52, height: 52, borderRadius: 26,
+  //   backgroundColor: Colors.roast, alignItems: 'center', justifyContent: 'center',
+  //   shadowColor: Colors.roast, shadowOffset: { width: 0, height: 4 },
+  //   shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+  // },
+  // reelPin: {
+  //   width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.roast,
+  //   alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.white,
+  //   shadowColor: Colors.espresso, shadowOffset: { width: 0, height: 1 },
+  //   shadowOpacity: 0.2, shadowRadius: 3, elevation: 4,
+  // },
 });

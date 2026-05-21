@@ -37,6 +37,80 @@ export function priceString(level?: number): string {
   return '$'.repeat(level);
 }
 
+export function distanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const NON_COFFEE_SHOPS = [
+  "mcdonald's", 'mcdonalds', 'mccafe', 'mccafé',
+  'burger king', "wendy's", 'wendys', 'taco bell',
+  'chick-fil-a', 'chick fil a', 'subway', 'chipotle',
+  '7-eleven', '7eleven', 'wawa', 'sheetz', "casey's",
+  'speedway', 'circle k', 'bp station', 'shell station',
+  'target', 'walmart', 'costco', 'whole foods',
+  'krispy kreme', 'dunkin',
+  'extramile', 'extra mile', 'chevron', 'arco', 'mobil',
+  'exxon', 'valero', 'marathon', 'sunoco', 'pilot',
+  'flying j', 'loves travel', "love's",
+];
+
+export function isNonCoffeeShop(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NON_COFFEE_SHOPS.some((chain) => lower.includes(chain));
+}
+
+export function getClosingSoon(
+  hours: string[] | null | undefined,
+  openNow?: boolean | null
+): { label: string; urgent: boolean } | null {
+  // Only show warning when shop is confirmed open
+  if (!openNow || !hours || hours.length === 0) return null;
+
+  // Google weekdayDescriptions: index 0 = Monday … 6 = Sunday
+  // JS getDay(): 0 = Sunday, 1 = Monday … 6 = Saturday → convert
+  const jsDay = new Date().getDay();
+  const googleDay = (jsDay + 6) % 7;
+  const todayDesc = hours[googleDay];
+  if (!todayDesc) return null;
+  if (todayDesc.toLowerCase().includes('closed')) return null;
+
+  // Match closing time after the dash, e.g. "7:00 AM – 9:00 PM" or "7:00 AM - 9:00 PM"
+  const match = todayDesc.match(/[–\-]\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+  if (!match) return null;
+
+  const closingStr = match[1].trim();
+  const timeMatch = closingStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!timeMatch) return null;
+
+  let hour = parseInt(timeMatch[1], 10);
+  const minute = parseInt(timeMatch[2], 10);
+  const ampm = timeMatch[3].toUpperCase();
+  if (ampm === 'PM' && hour !== 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+
+  const now = new Date();
+  const closing = new Date();
+  closing.setHours(hour, minute, 0, 0);
+  // Handle past-midnight closing
+  if (closing.getTime() < now.getTime()) closing.setDate(closing.getDate() + 1);
+
+  const minutesLeft = Math.round((closing.getTime() - now.getTime()) / 60000);
+  if (minutesLeft > 60 || minutesLeft < 0) return null;
+
+  return {
+    label: minutesLeft <= 10
+      ? `Closes in ${minutesLeft} min`
+      : `Closes @ ${closingStr}`,
+    urgent: minutesLeft <= 30,
+  };
+}
+
 export function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);

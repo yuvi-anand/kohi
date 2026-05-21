@@ -82,16 +82,17 @@ export interface UserResult {
   is_following: boolean;
 }
 
-export interface ReelSave {
-  id?: string;
-  user_id?: string;
-  url: string;
-  platform?: string | null;
-  shop_id?: string | null;
-  extracted_name?: string | null;
-  extracted_summary?: string | null;
-  source_caption?: string | null;
-  thumbnail_url?: string | null;
-  status?: string;
-  created_at?: string;
-}
+// REEL SAVE FEATURE — commented out, infrastructure saved for later
+// export interface ReelSave {
+//   id?: string;
+//   user_id?: string;
+//   url: string;
+//   platform?: string | null;
+//   shop_id?: string | null;
+//   extracted_name?: string | null;
+//   extracted_summary?: string | null;
+//   source_caption?: string | null;
+//   thumbnail_url?: string | null;
+//   status?: string;
+//   created_at?: string;
+// }

@@ -59,6 +59,14 @@ function RootLayoutNav() {
         name="onboarding"
         options={{ presentation: 'card', animation: 'fade' }}
       />
+      <Stack.Screen
+        name="followers"
+        options={{ presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="user/[id]"
+        options={{ presentation: 'card', animation: 'slide_from_right' }}
+      />
     </Stack>
   );
 }

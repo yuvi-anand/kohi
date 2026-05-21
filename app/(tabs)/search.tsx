@@ -22,6 +22,8 @@ import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { isNonCoffeeShop } from '../../lib/utils';
+
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
@@ -36,6 +38,7 @@ export default function SearchScreen() {
 
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
   const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [hideChains, setHideChains] = useState(false);
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const geocodeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -181,6 +184,10 @@ export default function SearchScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>Find a Coffee Shop</Text>
+        <TouchableOpacity style={styles.findFriendsBtn} onPress={() => router.push('/find-friends')}>
+          <Ionicons name="person-add-outline" size={16} color={Colors.caramel} />
+          <Text style={styles.findFriendsBtnText}>Find Friends</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.fields}>
@@ -232,20 +239,23 @@ export default function SearchScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-        {/* Open now filter */}
-        <TouchableOpacity
-          style={[styles.filterChip, openNowOnly && styles.filterChipActive]}
-          onPress={() => setOpenNowOnly((v) => !v)}
-        >
-          <Ionicons
-            name="time-outline"
-            size={13}
-            color={openNowOnly ? Colors.white : Colors.muted}
-          />
-          <Text style={[styles.filterChipText, openNowOnly && styles.filterChipTextActive]}>
-            Open now
-          </Text>
-        </TouchableOpacity>
+        {/* Filters row */}
+        <View style={styles.filtersRow}>
+          <TouchableOpacity
+            style={[styles.filterChip, openNowOnly && styles.filterChipActive]}
+            onPress={() => setOpenNowOnly((v) => !v)}
+          >
+            <Ionicons name="time-outline" size={13} color={openNowOnly ? Colors.white : Colors.muted} />
+            <Text style={[styles.filterChipText, openNowOnly && styles.filterChipTextActive]}>Open now</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, hideChains && styles.filterChipActive]}
+            onPress={() => setHideChains((v) => !v)}
+          >
+            <Ionicons name="storefront-outline" size={13} color={hideChains ? Colors.white : Colors.muted} />
+            <Text style={[styles.filterChipText, hideChains && styles.filterChipTextActive]}>Coffee shops only</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {error && (
@@ -255,7 +265,11 @@ export default function SearchScreen() {
       )}
 
       <FlatList
-        data={openNowOnly ? results.filter((s) => s.open_now === true) : results}
+        data={results.filter((s) => {
+          if (openNowOnly && s.open_now !== true) return false;
+          if (hideChains && isNonCoffeeShop(s.name)) return false;
+          return true;
+        })}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -311,6 +325,9 @@ function dotColor(name: string): string {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.cream },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 12,
@@ -319,6 +336,12 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.milk,
   },
   title: { fontSize: 22, fontWeight: '700', color: Colors.roast },
+  findFriendsBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 6, borderWidth: 1.5, borderColor: Colors.caramel,
+  },
+  findFriendsBtnText: { fontSize: 13, fontWeight: '600', color: Colors.caramel },
 
   fields: {
     backgroundColor: Colors.white,
@@ -341,6 +364,7 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 15, color: Colors.espresso },
 
+  filtersRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',

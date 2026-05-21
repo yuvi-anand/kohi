@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,20 +11,21 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Rating, FeedItem } from '../../lib/types';
+import { Rating, FeedItem, ShopStats } from '../../lib/types';
 import { Colors } from '../../lib/colors';
-import { getRatings, getFriendFeed } from '../../lib/api';
+import { getRatings, getFriendFeed, getShopStatsBatch } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import ShopCard from '../../components/ShopCard';
-import { formatScore, overallColor, timeAgo } from '../../lib/utils';
+import { formatScore, overallColor, timeAgo, distanceMiles, isNonCoffeeShop } from '../../lib/utils';
 
 type FeedMode = 'nearby' | 'social';
-type Filter = 'all' | 'unrated' | 'laptop' | 'vibes' | 'coffee' | 'work';
+type Filter = 'open' | 'all' | 'unrated' | 'laptop' | 'vibes' | 'coffee' | 'work';
 
 const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'open',    label: 'Open Now' },
   { key: 'all',     label: 'All' },
   { key: 'unrated', label: 'Not Yet Rated' },
   { key: 'laptop',  label: 'Laptop Friendly' },
@@ -51,11 +52,12 @@ export default function FeedScreen() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedLoaded, setFeedLoaded] = useState(false);
+  const [shopStats, setShopStats] = useState<Record<string, ShopStats>>({});
 
   const router = useRouter();
   const { user } = useAuth();
-  const { loading: locLoading, permissionDenied } = useLocation();
-  const { shops, loading: shopsLoading, error: shopsError, isRealData } = useShops();
+  const { loading: locLoading, permissionDenied, coords } = useLocation();
+  const { shops, loading: shopsLoading, error: shopsError, isRealData, addToCache } = useShops();
 
   const loadRatings = useCallback(async () => {
     if (!user || !isSupabaseConfigured()) return;
@@ -78,22 +80,41 @@ export default function FeedScreen() {
     if (!user || !isSupabaseConfigured()) return;
     setFeedLoading(true);
     try {
-      setFeedItems(await getFriendFeed(user.id));
+      const items = await getFriendFeed(user.id);
+      setFeedItems(items);
       setFeedLoaded(true);
+      const uniqueShopIds = [...new Set(items.map(i => i.shop_id))];
+      getShopStatsBatch(uniqueShopIds).then(setShopStats).catch(() => {});
     } catch { } finally {
       setFeedLoading(false);
     }
   }, [user]);
 
+  // Load shop stats for nearby shops when shops change
+  useEffect(() => {
+    if (shops.length === 0) return;
+    getShopStatsBatch(shops.map(s => s.id)).then(setShopStats).catch(() => {});
+  }, [shops]);
+
+  function handleRate(item: FeedItem) {
+    addToCache([{ id: item.shop_id, name: item.shop_name, address: item.shop_address }]);
+    router.push(`/rate/${item.shop_id}`);
+  }
+
   useFocusEffect(useCallback(() => { loadRatings(); loadFeed(); }, [loadRatings, loadFeed]));
 
+  // Filter out fast food / gas stations, then apply active filter
+  const nearbyShops = shops.filter((s) => !isNonCoffeeShop(s.name));
+
   const filtered = (() => {
-    if (activeFilter === 'unrated') return shops.filter((s) => !ratings[s.id]);
-    if (activeFilter === 'laptop') return shops.filter((s) => ratings[s.id]?.laptop_friendly);
-    if (activeFilter === 'vibes') return shops.filter((s) => (ratings[s.id]?.vibes ?? 0) >= 8);
-    if (activeFilter === 'coffee') return shops.filter((s) => (ratings[s.id]?.coffee_quality ?? 0) >= 8);
+    let base = nearbyShops;
+    if (activeFilter === 'open') return base.filter((s) => s.open_now === true);
+    if (activeFilter === 'unrated') return base.filter((s) => !ratings[s.id]);
+    if (activeFilter === 'laptop') return base.filter((s) => ratings[s.id]?.laptop_friendly);
+    if (activeFilter === 'vibes') return base.filter((s) => (ratings[s.id]?.vibes ?? 0) >= 8);
+    if (activeFilter === 'coffee') return base.filter((s) => (ratings[s.id]?.coffee_quality ?? 0) >= 8);
     if (activeFilter === 'work') {
-      return [...shops].sort((a, b) => {
+      return [...base].sort((a, b) => {
         const ra = ratings[a.id];
         const rb = ratings[b.id];
         if (ra && rb) return workScore(rb) - workScore(ra);
@@ -102,7 +123,7 @@ export default function FeedScreen() {
         return 0;
       });
     }
-    return shops;
+    return base;
   })();
 
   return (
@@ -175,13 +196,20 @@ export default function FeedScreen() {
               </View>
             </>
           }
-          renderItem={({ item }) => (
-            <ShopCard
-              shop={item}
-              rating={ratings[item.id]}
-              onPress={() => router.push(`/shop/${item.id}`)}
-            />
-          )}
+          renderItem={({ item }) => {
+            const distMi = (coords && item.lat && item.lng)
+              ? distanceMiles(coords.latitude, coords.longitude, item.lat, item.lng)
+              : null;
+            return (
+              <ShopCard
+                shop={item}
+                rating={ratings[item.id]}
+                shopStats={shopStats[item.id]}
+                distanceMi={distMi}
+                onPress={() => router.push(`/shop/${item.id}`)}
+              />
+            );
+          }}
           ListEmptyComponent={
             shopsLoading ? (
               <View style={styles.center}>
@@ -230,24 +258,47 @@ export default function FeedScreen() {
                 onPress={() => router.push(`/shop/${item.shop_id}`)}
                 activeOpacity={0.8}
               >
-                <View style={styles.activityAvatar}>
+                <TouchableOpacity
+                  onPress={() => router.push('/user/' + item.user_id)}
+                  activeOpacity={0.7}
+                  style={styles.activityAvatar}
+                >
                   <Text style={styles.activityAvatarText}>
                     {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
                   </Text>
-                </View>
+                </TouchableOpacity>
                 <View style={styles.activityBody}>
-                  <Text style={styles.activityText}>
-                    <Text style={styles.activityName}>
-                      {item.display_name ?? (item.username ? `@${item.username}` : 'Someone')}
+                  <TouchableOpacity onPress={() => router.push('/user/' + item.user_id)} activeOpacity={0.7}>
+                    <Text style={styles.activityText}>
+                      <Text style={styles.activityName}>
+                        {item.display_name ?? (item.username ? `@${item.username}` : 'Someone')}
+                      </Text>
+                      {' rated '}
+                      <Text style={styles.activityShop}>{item.shop_name}</Text>
+                      {' '}{item.drink_type === 'matcha' ? '🍵' : '☕'}
                     </Text>
-                    {' rated '}
-                    <Text style={styles.activityShop}>{item.shop_name}</Text>
-                    {' '}{item.drink_type === 'matcha' ? '🍵' : '☕'}
-                  </Text>
+                  </TouchableOpacity>
                   {item.notes ? (
                     <Text style={styles.activityNote} numberOfLines={2}>"{item.notes}"</Text>
                   ) : null}
                   <Text style={styles.activityTime}>{timeAgo(item.created_at)}</Text>
+                  <View style={styles.activityFooter}>
+                    {shopStats[item.shop_id] && (
+                      <View style={styles.communityAvgRow}>
+                        <Text style={styles.communityAvgLabel}>avg</Text>
+                        <View style={[styles.communityAvgBadge, { backgroundColor: overallColor(shopStats[item.shop_id].avg_overall) }]}>
+                          <Text style={styles.communityAvgText}>{formatScore(shopStats[item.shop_id].avg_overall)}</Text>
+                        </View>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.rateInlineBtn}
+                      onPress={(e) => { e.stopPropagation(); handleRate(item); }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.rateInlineBtnText}>Rate</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={[styles.activityScore, { backgroundColor: overallColor(item.overall) }]}>
                   <Text style={styles.activityScoreText}>{formatScore(item.overall)}</Text>
@@ -256,15 +307,6 @@ export default function FeedScreen() {
             ))
           )}
         </ScrollView>
-      )}
-      {mode === 'nearby' && (
-        <TouchableOpacity
-          style={styles.reelFab}
-          onPress={() => router.push('/add-reel')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="link" size={20} color={Colors.white} />
-        </TouchableOpacity>
       )}
     </SafeAreaView>
   );
@@ -361,6 +403,7 @@ const styles = StyleSheet.create({
   activityScore: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   activityScoreText: { fontSize: 12, fontWeight: '700', color: Colors.white },
 
@@ -376,23 +419,16 @@ const styles = StyleSheet.create({
   socialCtaTitle: { fontSize: 16, fontWeight: '700', color: Colors.espresso, textAlign: 'center' },
   socialCtaText: { fontSize: 13, color: Colors.muted, textAlign: 'center', lineHeight: 19 },
   activityNote: { fontSize: 12, color: Colors.muted, fontStyle: 'italic', marginTop: 2, lineHeight: 16 },
+  activityFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
+  communityAvgRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  communityAvgLabel: { fontSize: 10, color: Colors.muted },
+  communityAvgBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  communityAvgText: { fontSize: 10, fontWeight: '700', color: Colors.white },
+  rateInlineBtn: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 5,
+    borderWidth: 1.5, borderColor: Colors.caramel,
+  },
+  rateInlineBtnText: { fontSize: 11, fontWeight: '600', color: Colors.caramel },
   findFriendsCta: { backgroundColor: Colors.caramel, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 24, marginTop: 4 },
   findFriendsCtaText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
-
-  reelFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.roast,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.roast,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
 });

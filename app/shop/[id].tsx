@@ -178,16 +178,22 @@ export default function ShopDetailScreen() {
                 </View>
               )}
             </View>
-            {rating && (
-              <View
-                style={[
-                  styles.overallBadge,
-                  { backgroundColor: overallColor(rating.overall) },
-                ]}
-              >
+            {shopStats ? (
+              <View style={styles.badgeStack}>
+                <View style={[styles.overallBadge, { backgroundColor: overallColor(shopStats.avg_overall) }]}>
+                  <Text style={styles.overallText}>{formatScore(shopStats.avg_overall)}</Text>
+                </View>
+                {rating && (
+                  <View style={[styles.yoursBadge, { backgroundColor: overallColor(rating.overall) }]}>
+                    <Text style={styles.yoursText}>yours: {formatScore(rating.overall)}</Text>
+                  </View>
+                )}
+              </View>
+            ) : rating ? (
+              <View style={[styles.overallBadge, { backgroundColor: overallColor(rating.overall) }]}>
                 <Text style={styles.overallText}>{formatScore(rating.overall)}</Text>
               </View>
-            )}
+            ) : null}
           </View>
 
           {/* Action buttons */}
@@ -196,8 +202,8 @@ export default function ShopDetailScreen() {
               style={styles.actionBtn}
               onPress={() => router.push(`/rate/${shop.id}`)}
             >
-              <Ionicons name={rating ? 'create' : 'star'} size={18} color={Colors.caramel} />
-              <Text style={styles.actionText}>{rating ? 'Edit Rating' : 'Rate'}</Text>
+              <Ionicons name={rating ? 'create-outline' : 'star-outline'} size={22} color={Colors.caramel} />
+              <Text style={styles.actionText}>{rating ? 'Edit' : 'Rate'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -206,11 +212,11 @@ export default function ShopDetailScreen() {
               disabled={bookmarkLoading}
             >
               {bookmarkLoading ? (
-                <ActivityIndicator size="small" color={Colors.caramel} />
+                <ActivityIndicator size="small" color={bookmarked ? Colors.white : Colors.caramel} />
               ) : (
                 <Ionicons
                   name={bookmarked ? 'bookmark' : 'bookmark-outline'}
-                  size={18}
+                  size={22}
                   color={bookmarked ? Colors.white : Colors.caramel}
                 />
               )}
@@ -220,12 +226,12 @@ export default function ShopDetailScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionBtn} onPress={handleNavigate}>
-              <Ionicons name="navigate-outline" size={18} color={Colors.caramel} />
-              <Text style={styles.actionText}>Navigate</Text>
+              <Ionicons name="navigate-outline" size={22} color={Colors.caramel} />
+              <Text style={styles.actionText}>Maps</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-              <Ionicons name="share-outline" size={18} color={Colors.caramel} />
+              <Ionicons name="share-outline" size={22} color={Colors.caramel} />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
           </View>
@@ -240,24 +246,10 @@ export default function ShopDetailScreen() {
           <View style={styles.ratingCard}>
             <Text style={styles.sectionTitle}>Your Ratings</Text>
 
-            {CRITERIA.map((c) => (
-              <RatingBar
-                key={c.key}
-                label={c.label}
-                emoji={c.emoji}
-                score={rating[c.key] as number}
-                maxScore={c.max}
-              />
-            ))}
-
             {shopStats && shopStats.rating_count > 1 && (
               <View style={styles.globalStatsBox}>
                 <Text style={styles.globalStatsTitle}>Community ({shopStats.rating_count} ratings)</Text>
                 <View style={styles.globalStatsRow}>
-                  <View style={styles.globalStat}>
-                    <Text style={styles.globalStatVal}>{shopStats.avg_overall}</Text>
-                    <Text style={styles.globalStatLabel}>Avg Overall</Text>
-                  </View>
                   <View style={styles.globalStat}>
                     <Text style={styles.globalStatVal}>{shopStats.avg_coffee}</Text>
                     <Text style={styles.globalStatLabel}>Coffee</Text>
@@ -277,6 +269,16 @@ export default function ShopDetailScreen() {
                 </View>
               </View>
             )}
+
+            {CRITERIA.map((c) => (
+              <RatingBar
+                key={c.key}
+                label={c.label}
+                emoji={c.emoji}
+                score={rating[c.key] as number}
+                maxScore={c.max}
+              />
+            ))}
 
             <View style={styles.divider} />
 
@@ -433,31 +435,45 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     lineHeight: 18,
   },
+  badgeStack: {
+    alignItems: 'center',
+    marginLeft: 12,
+    gap: 4,
+  },
   overallBadge: {
     width: 52,
     height: 52,
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
   },
   overallText: {
     color: Colors.white,
     fontSize: 17,
     fontWeight: '700',
   },
+  yoursBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  yoursText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '600',
+  },
   actions: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     paddingVertical: 10,
-    borderRadius: 5,
+    borderRadius: 8,
     borderWidth: 1.5,
     borderColor: Colors.caramel,
   },
@@ -466,7 +482,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.caramel,
   },
   actionText: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.caramel,
   },

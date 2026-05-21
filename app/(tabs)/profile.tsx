@@ -233,12 +233,12 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statRowDivider} />
           <View style={styles.statsRow}>
-            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/find-friends')}>
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push(`/followers?userId=${user?.id}&type=following`)}>
               <Text style={styles.statNumber}>{followCounts.following}</Text>
               <Text style={styles.statLabel}>Following</Text>
             </TouchableOpacity>
             <View style={styles.statDivider} />
-            <TouchableOpacity style={styles.statCard} onPress={() => router.push('/find-friends')}>
+            <TouchableOpacity style={styles.statCard} onPress={() => router.push(`/followers?userId=${user?.id}&type=followers`)}>
               <Text style={styles.statNumber}>{followCounts.followers}</Text>
               <Text style={styles.statLabel}>Followers</Text>
             </TouchableOpacity>

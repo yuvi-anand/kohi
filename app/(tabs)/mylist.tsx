@@ -159,17 +159,18 @@ export default function MyListScreen() {
         <FlatList
           data={bookmarkedShops}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={
-            <TouchableOpacity
-              style={styles.reelPasteBar}
-              onPress={() => router.push('/add-reel')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="link-outline" size={16} color={Colors.muted} />
-              <Text style={styles.reelPasteBarText}>Paste link from TikTok / Reels</Text>
-              <Ionicons name="arrow-forward" size={14} color={Colors.muted} />
-            </TouchableOpacity>
-          }
+          // REEL PASTE BAR — commented out, infrastructure saved for later
+          // ListHeaderComponent={
+          //   <TouchableOpacity
+          //     style={styles.reelPasteBar}
+          //     onPress={() => router.push('/add-reel')}
+          //     activeOpacity={0.8}
+          //   >
+          //     <Ionicons name="link-outline" size={16} color={Colors.muted} />
+          //     <Text style={styles.reelPasteBarText}>Paste link from TikTok / Reels</Text>
+          //     <Ionicons name="arrow-forward" size={14} color={Colors.muted} />
+          //   </TouchableOpacity>
+          // }
           renderItem={({ item }) => (
             <ShopCard
               shop={item}

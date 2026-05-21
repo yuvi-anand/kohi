@@ -1,17 +1,28 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { CoffeeShop, Rating } from '../lib/types';
+import { CoffeeShop, Rating, ShopStats } from '../lib/types';
 import { Colors } from '../lib/colors';
-import { formatScore, overallColor, priceString } from '../lib/utils';
+import { formatScore, overallColor, priceString, getClosingSoon } from '../lib/utils';
 
 interface Props {
   shop: CoffeeShop;
   rating?: Rating | null;
+  shopStats?: ShopStats | null;
+  distanceMi?: number | null;
   rank?: number;
   onPress: () => void;
 }
 
-export default function ShopCard({ shop, rating, rank, onPress }: Props) {
+export default function ShopCard({ shop, rating, shopStats, distanceMi, rank, onPress }: Props) {
+  // Determine what to show in the right badge:
+  // 1. User's personal score if rated
+  // 2. Community avg if available
+  // 3. Empty neutral circle
+  const displayScore = rating?.overall ?? shopStats?.avg_overall ?? null;
+  const isPersonal = rating != null;
+  const closingSoon = getClosingSoon(shop.hours, shop.open_now);
+  const reviewCount = shopStats?.rating_count ?? 0;
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.left}>
@@ -29,6 +40,14 @@ export default function ShopCard({ shop, rating, rank, onPress }: Props) {
           {shop.neighborhood ?? shop.address}
           {shop.price_level ? `  ${priceString(shop.price_level)}` : ''}
         </Text>
+        {distanceMi != null && (
+          <Text style={styles.distance}>{distanceMi.toFixed(1)} mi away</Text>
+        )}
+        {closingSoon && (
+          <Text style={[styles.closingSoon, closingSoon.urgent && styles.closingSoonUrgent]}>
+            {closingSoon.label}
+          </Text>
+        )}
         {rating && (
           <View style={styles.badges}>
             {rating.laptop_friendly && (
@@ -36,7 +55,7 @@ export default function ShopCard({ shop, rating, rank, onPress }: Props) {
                 <Text style={styles.badgeText}>Laptop</Text>
               </View>
             )}
-            {(rating.wifi_quality ?? 1) >= 3 && (
+            {(rating.wifi_quality ?? 1) >= 4 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>WiFi</Text>
               </View>
@@ -51,15 +70,23 @@ export default function ShopCard({ shop, rating, rank, onPress }: Props) {
       </View>
 
       <View style={styles.right}>
-        {rating ? (
-          <View style={[styles.scoreBadge, { backgroundColor: overallColor(rating.overall) }]}>
-            <Text style={styles.scoreText}>{formatScore(rating.overall)}</Text>
-          </View>
-        ) : (
-          <View style={styles.unratedBadge}>
-            <Text style={styles.unratedText}>Rate</Text>
-          </View>
-        )}
+        <View style={{ position: 'relative' }}>
+          {displayScore != null ? (
+            <View style={[styles.scoreBadge, { backgroundColor: overallColor(displayScore) }, !isPersonal && styles.communityBadge]}>
+              <Text style={styles.scoreText}>{formatScore(displayScore)}</Text>
+              {!isPersonal && <Text style={styles.communityLabel}>avg</Text>}
+            </View>
+          ) : (
+            <View style={styles.emptyBadge}>
+              <Text style={styles.emptyText}>—</Text>
+            </View>
+          )}
+          {reviewCount > 0 && (
+            <View style={styles.countBubble}>
+              <Text style={styles.countText}>{reviewCount > 99 ? '99+' : reviewCount}</Text>
+            </View>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -128,6 +155,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.muted,
   },
+  distance: {
+    fontSize: 11,
+    color: Colors.caramel,
+    fontWeight: '500',
+  },
+  closingSoon: {
+    fontSize: 11,
+    color: '#C87941',
+    fontWeight: '600',
+  },
+  closingSoonUrgent: {
+    color: '#D4463B',
+  },
   badges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -148,29 +188,59 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   scoreBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  communityBadge: {
+    opacity: 0.75,
   },
   scoreText: {
     color: Colors.white,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
+    lineHeight: 14,
   },
-  unratedBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  communityLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 8,
+    fontWeight: '500',
+  },
+  emptyBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: Colors.milk,
+    backgroundColor: Colors.foam,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  unratedText: {
-    fontSize: 11,
-    color: Colors.muted,
-    fontWeight: '500',
+  emptyText: {
+    fontSize: 13,
+    color: Colors.milk,
+    fontWeight: '600',
+  },
+  countBubble: {
+    position: 'absolute',
+    bottom: -4,
+    left: -4,
+    backgroundColor: Colors.espresso,
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.white,
+  },
+  countText: {
+    color: Colors.white,
+    fontSize: 8,
+    fontWeight: '700',
+    lineHeight: 10,
   },
 });
