@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { formatScore, overallColor } from '../../lib/utils';
+import { formatScore, overallColor, normalizeScore, NORMALIZE_THRESHOLD, timeAgo } from '../../lib/utils';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,11 +35,13 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [ratings, setRatings] = useState<Rating[]>([]);
+  const [allRatings, setAllRatings] = useState<Rating[]>([]);
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [topExpanded, setTopExpanded] = useState(false);
 
   const isOwnProfile = user?.id === id;
 
@@ -74,6 +76,7 @@ export default function UserProfileScreen() {
       }
       const sorted = Object.values(shopBestMap).sort((a, b) => b.overall - a.overall);
       setRatings(sorted);
+      setAllRatings(ratingsData);
 
       // Fetch missing shops
       const missingIds = sorted
@@ -116,6 +119,29 @@ export default function UserProfileScreen() {
   const displayName = profile?.name || (profile?.username ? `@${profile.username}` : 'Unknown');
   const initials = (profile?.name?.[0] ?? profile?.username?.[0] ?? '?').toUpperCase();
   const topRatings = ratings.slice(0, 5);
+
+  // Normalize scores for this user's list (deduped ratings, mixed types — used for top 5 only)
+  const theirScoresUnlocked = ratings.length >= NORMALIZE_THRESHOLD;
+  const theirMax = theirScoresUnlocked
+    ? Math.max(...ratings.map((r) => r.overall))
+    : 0;
+
+  // Per-drink-type normalization for recent activity feed
+  const theirCoffeeRatings = allRatings.filter(r => (r.drink_type ?? 'coffee') === 'coffee');
+  const theirMatchaRatings = allRatings.filter(r => r.drink_type === 'matcha');
+  function dedupeByShop(list: Rating[]): Rating[] {
+    const best: Record<string, Rating> = {};
+    for (const r of list) {
+      if (!best[r.shop_id] || r.overall > best[r.shop_id].overall) best[r.shop_id] = r;
+    }
+    return Object.values(best);
+  }
+  const coffeeDeduped = dedupeByShop(theirCoffeeRatings);
+  const matchaDeduped = dedupeByShop(theirMatchaRatings);
+  const coffeeUnlocked = coffeeDeduped.length >= NORMALIZE_THRESHOLD;
+  const matchaUnlocked = matchaDeduped.length >= NORMALIZE_THRESHOLD;
+  const coffeeMax = coffeeUnlocked ? Math.max(...coffeeDeduped.map(r => r.overall)) : 0;
+  const matchaMax = matchaUnlocked ? Math.max(...matchaDeduped.map(r => r.overall)) : 0;
 
   if (loading) {
     return (
@@ -228,42 +254,112 @@ export default function UserProfileScreen() {
           </View>
         </View>
 
-        {/* Top rated shops */}
+        {/* Collapsible Top 5 */}
         {topRatings.length > 0 && (
           <View style={styles.rankingsCard}>
-            <View style={styles.rankingsHeader}>
-              <Text style={styles.rankingsTitle}>Top Rated Shops</Text>
-            </View>
-            {topRatings.map((r, i) => {
-              const shop = shopById[r.shop_id];
-              return (
+            <TouchableOpacity
+              style={styles.rankingsHeader}
+              onPress={() => setTopExpanded(v => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.rankingsTitle}>Top 5 Rankings</Text>
+              <Ionicons name={topExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.muted} />
+            </TouchableOpacity>
+
+            {topExpanded && (
+              <>
+                {topRatings.map((r, i) => {
+                  const shop = shopById[r.shop_id];
+                  const displayScore = theirScoresUnlocked
+                    ? normalizeScore(r.overall, theirMax)
+                    : null;
+                  return (
+                    <TouchableOpacity
+                      key={`${r.shop_id}-${i}`}
+                      style={styles.rankRow}
+                      onPress={() => router.push(`/user-ratings/${id}`)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.rankNum}>{i + 1}</Text>
+                      <View style={styles.rankInfo}>
+                        <Text style={styles.rankName} numberOfLines={1}>{shop?.name ?? '…'}</Text>
+                        {shop?.address ? (
+                          <Text style={styles.rankAddr} numberOfLines={1}>{shop.address}</Text>
+                        ) : null}
+                      </View>
+                      {displayScore != null ? (
+                        <View style={[styles.rankBadge, { backgroundColor: overallColor(displayScore) }]}>
+                          <Text style={styles.rankScore}>{formatScore(displayScore)}</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.rankBadgeLocked}>
+                          <Ionicons name="lock-closed" size={13} color={Colors.muted} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
                 <TouchableOpacity
-                  key={`${r.shop_id}-${i}`}
-                  style={styles.rankRow}
-                  onPress={() => router.push(`/shop/${r.shop_id}`)}
-                  activeOpacity={0.7}
+                  style={styles.seeAllBtn}
+                  onPress={() => router.push(`/user-ratings/${id}`)}
                 >
-                  <Text style={styles.rankNum}>{i + 1}</Text>
-                  <View style={styles.rankInfo}>
-                    <Text style={styles.rankName} numberOfLines={1}>
-                      {shop?.name ?? 'Loading…'}
-                    </Text>
-                    {shop?.address ? (
-                      <Text style={styles.rankAddr} numberOfLines={1}>{shop.address}</Text>
-                    ) : null}
-                  </View>
-                  <View style={[styles.rankBadge, { backgroundColor: overallColor(r.overall) }]}>
-                    <Text style={styles.rankScore}>{formatScore(r.overall)}</Text>
-                  </View>
+                  <Text style={styles.seeAllText}>See all {ratings.length} ratings →</Text>
                 </TouchableOpacity>
-              );
-            })}
+              </>
+            )}
           </View>
         )}
 
         {topRatings.length === 0 && (
           <View style={styles.emptyRatings}>
             <Text style={styles.emptyRatingsText}>No ratings yet</Text>
+          </View>
+        )}
+
+        {/* Recent activity feed */}
+        {allRatings.length > 0 && (
+          <View style={styles.feedSection}>
+            <Text style={styles.feedTitle}>Recent Activity</Text>
+            {[...allRatings]
+              .filter(r => r.visited_at || r.created_at)
+              .sort((a, b) => new Date(b.visited_at ?? b.created_at ?? 0).getTime() - new Date(a.visited_at ?? a.created_at ?? 0).getTime())
+              .slice(0, 15)
+              .map((r, i) => {
+                const shop = shopById[r.shop_id];
+                const drinkEmoji = r.drink_type === 'matcha' ? '🍵' : '☕';
+                const isCoffee = (r.drink_type ?? 'coffee') === 'coffee';
+                const unlocked = isCoffee ? coffeeUnlocked : matchaUnlocked;
+                const max = isCoffee ? coffeeMax : matchaMax;
+                const score = unlocked ? normalizeScore(r.overall, max) : null;
+                const dateStr = r.visited_at ?? r.created_at;
+                return (
+                  <TouchableOpacity
+                    key={`feed-${r.shop_id}-${r.drink_type}-${i}`}
+                    style={styles.feedCard}
+                    onPress={() => router.push(`/shop/${r.shop_id}`)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.feedLeft}>
+                      <Text style={styles.feedEmoji}>{drinkEmoji}</Text>
+                    </View>
+                    <View style={styles.feedMiddle}>
+                      <Text style={styles.feedShop} numberOfLines={1}>{shop?.name ?? '…'}</Text>
+                      {r.notes ? <Text style={styles.feedNotes} numberOfLines={2}>"{r.notes}"</Text> : null}
+                      {dateStr ? <Text style={styles.feedDate}>{timeAgo(dateStr)}</Text> : null}
+                    </View>
+                    {score != null ? (
+                      <View style={[styles.feedBadge, { backgroundColor: overallColor(score) }]}>
+                        <Text style={styles.feedBadgeText}>{formatScore(score)}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.feedBadgeLocked}>
+                        <Ionicons name="lock-closed" size={12} color={Colors.muted} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            }
           </View>
         )}
       </ScrollView>
@@ -326,14 +422,15 @@ const styles = StyleSheet.create({
 
   rankingsCard: {
     backgroundColor: Colors.white,
-    marginHorizontal: 16, borderRadius: 8,
-    paddingVertical: 16,
+    marginHorizontal: 16, borderRadius: 10,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    marginBottom: 16, overflow: 'hidden',
   },
   rankingsHeader: {
-    paddingHorizontal: 16, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
   },
   rankingsTitle: { fontSize: 14, fontWeight: '700', color: Colors.espresso },
   rankRow: {
@@ -344,15 +441,38 @@ const styles = StyleSheet.create({
   rankInfo: { flex: 1 },
   rankName: { fontSize: 14, fontWeight: '700', color: Colors.espresso },
   rankAddr: { fontSize: 12, color: Colors.muted, marginTop: 1 },
-  rankBadge: {
+  rankBadge: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  rankScore: { fontSize: 13, fontWeight: '700', color: Colors.white },
+  rankBadgeLocked: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.foam, borderWidth: 1.5, borderColor: Colors.milk,
   },
-  rankScore: { fontSize: 13, fontWeight: '700', color: Colors.white },
+  seeAllBtn: { paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: Colors.foam },
+  seeAllText: { fontSize: 13, color: Colors.caramel, fontWeight: '600', textAlign: 'center' },
 
   emptyRatings: {
     marginHorizontal: 16, padding: 32,
     backgroundColor: Colors.white, borderRadius: 8, alignItems: 'center',
   },
   emptyRatingsText: { fontSize: 14, color: Colors.muted },
+
+  feedSection: { marginHorizontal: 16, marginBottom: 16 },
+  feedTitle: { fontSize: 14, fontWeight: '700', color: Colors.espresso, marginBottom: 10 },
+  feedCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.white, borderRadius: 10,
+    padding: 12, marginBottom: 8, gap: 10,
+    shadowColor: Colors.espresso, shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+  },
+  feedLeft: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.foam, alignItems: 'center', justifyContent: 'center' },
+  feedEmoji: { fontSize: 18 },
+  feedMiddle: { flex: 1, gap: 2 },
+  feedShop: { fontSize: 14, fontWeight: '700', color: Colors.espresso },
+  feedNotes: { fontSize: 12, color: Colors.muted, fontStyle: 'italic', lineHeight: 16 },
+  feedDate: { fontSize: 11, color: Colors.caramel, fontWeight: '500' },
+  feedBadge: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  feedBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.white },
+  feedBadgeLocked: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.foam, borderWidth: 1.5, borderColor: Colors.milk, alignItems: 'center', justifyContent: 'center' },
 });

@@ -183,15 +183,19 @@ export default function ShopDetailScreen() {
                 <View style={[styles.overallBadge, { backgroundColor: overallColor(shopStats.avg_overall) }]}>
                   <Text style={styles.overallText}>{formatScore(shopStats.avg_overall)}</Text>
                 </View>
+                <Text style={styles.badgeLabel}>global avg</Text>
                 {rating && (
                   <View style={[styles.yoursBadge, { backgroundColor: overallColor(rating.overall) }]}>
-                    <Text style={styles.yoursText}>yours: {formatScore(rating.overall)}</Text>
+                    <Text style={styles.yoursText}>raw: {formatScore(rating.overall)}</Text>
                   </View>
                 )}
               </View>
             ) : rating ? (
-              <View style={[styles.overallBadge, { backgroundColor: overallColor(rating.overall) }]}>
-                <Text style={styles.overallText}>{formatScore(rating.overall)}</Text>
+              <View style={styles.badgeStack}>
+                <View style={[styles.overallBadge, { backgroundColor: overallColor(rating.overall) }]}>
+                  <Text style={styles.overallText}>{formatScore(rating.overall)}</Text>
+                </View>
+                <Text style={styles.badgeLabel}>your raw</Text>
               </View>
             ) : null}
           </View>
@@ -452,10 +456,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
+  badgeLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: -2,
+  },
   yoursBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
+    marginTop: 2,
   },
   yoursText: {
     color: Colors.white,

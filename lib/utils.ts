@@ -111,6 +111,18 @@ export function getClosingSoon(
   };
 }
 
+export const NORMALIZE_THRESHOLD = 5;
+
+/**
+ * Normalizes a raw score so the user's personal best = 10.
+ * Formula: (raw / userMax) * 10
+ * Only call this when the user has >= NORMALIZE_THRESHOLD ratings.
+ */
+export function normalizeScore(raw: number, userMax: number): number {
+  if (userMax <= 0) return raw;
+  return Math.round((raw / userMax) * 100) / 10;
+}
+
 export function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);

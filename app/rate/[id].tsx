@@ -24,7 +24,7 @@ import { useShops } from '../../context/shops';
 import { getRating, getRatings, upsertRating, upsertShop } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { computeOverall } from '../../lib/utils';
+import { computeOverall, NORMALIZE_THRESHOLD } from '../../lib/utils';
 
 // Per-drink: only the quality score differs between coffee and matcha
 type DrinkQuality = { coffee_quality: number };
@@ -35,6 +35,7 @@ type SharedState = {
   enoughSeating: boolean | null;
   wifiGood: boolean | null;
   pastries: number | null;
+  pastriesNo: boolean; // true = explicitly answered "no pastries"
   laptopFriendly: boolean;
   notes: string;
 };
@@ -49,6 +50,7 @@ const DEFAULT_SHARED: SharedState = {
   enoughSeating: null,
   wifiGood: null,
   pastries: null,
+  pastriesNo: false,
   laptopFriendly: false,
   notes: '',
 };
@@ -73,6 +75,7 @@ export default function RateScreen() {
     vibes: number | null;
     pastries: number | null;
   }>({ coffeeQuality: null, matchaQuality: null, vibes: null, pastries: null });
+  const [drinkCounts, setDrinkCounts] = useState({ coffee: 0, matcha: 0 });
   const scrollRef = useRef<ScrollView>(null);
 
   // Animation value: 0 = coffee, 1 = matcha
@@ -115,6 +118,11 @@ export default function RateScreen() {
           vibes: avg(otherRatings.map((r) => r.vibes)),
           pastries: avg(pastriesRatings.map((r) => r.pastries!)),
         });
+        // Count existing ratings per drink type (excluding current shop)
+        setDrinkCounts({
+          coffee: allRatings.filter((r) => (r.drink_type ?? 'coffee') === 'coffee' && r.shop_id !== id).length,
+          matcha: allRatings.filter((r) => r.drink_type === 'matcha' && r.shop_id !== id).length,
+        });
         if (coffee) setCoffeeQuality({ coffee_quality: coffee.coffee_quality });
         if (matcha) setMatchaQuality({ coffee_quality: matcha.coffee_quality });
         // Shared fields come from whichever rating exists (coffee preferred)
@@ -125,6 +133,7 @@ export default function RateScreen() {
             enoughSeating: src.seating == null ? null : src.seating >= 3,
             wifiGood: src.wifi_quality == null ? null : src.wifi_quality >= 3,
             pastries: src.pastries ?? null,
+            pastriesNo: false,
             laptopFriendly: src.laptop_friendly,
             notes: src.notes ?? '',
           });
@@ -183,12 +192,15 @@ export default function RateScreen() {
         notes: shared.notes.trim() || undefined,
         visited_at: new Date().toISOString(),
       });
+      const countAfter = (drinkType === 'coffee' ? drinkCounts.coffee : drinkCounts.matcha) + 1;
       router.replace({
         pathname: '/rating-result',
         params: {
           shopName: shop.name,
           overall: String(overall),
           shopId: shop.id,
+          ratingsAfter: String(countAfter),
+          drinkType,
         },
       });
     } catch (e: any) {
@@ -358,22 +370,30 @@ export default function RateScreen() {
               </View>
             </View>
 
-            {/* Pastries row — shared */}
+            {/* Pastries row — 3 states: neither (null/false), yes (slider), no (X) */}
             <View style={styles.thumbRow}>
               <Ionicons name="cafe-outline" size={20} color={Colors.muted} style={styles.criterionIcon} />
               <Text style={styles.thumbRowLabel}>Has pastries?</Text>
               <View style={styles.thumbBtns}>
                 <TouchableOpacity
                   style={[styles.thumbBtn, shared.pastries != null && { backgroundColor: sliderColor, borderColor: sliderColor }]}
-                  onPress={() => setShared((prev) => ({ ...prev, pastries: prev.pastries != null ? prev.pastries : 3 }))}
+                  onPress={() => setShared((prev) => ({
+                    ...prev,
+                    pastries: prev.pastries != null ? null : 3,
+                    pastriesNo: false,
+                  }))}
                 >
                   <Ionicons name="checkmark" size={20} color={shared.pastries != null ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.thumbBtn, shared.pastries == null && styles.thumbBtnActiveNeutral]}
-                  onPress={() => setShared((prev) => ({ ...prev, pastries: null }))}
+                  style={[styles.thumbBtn, shared.pastriesNo && styles.thumbBtnActiveNeutral]}
+                  onPress={() => setShared((prev) => ({
+                    ...prev,
+                    pastries: null,
+                    pastriesNo: !prev.pastriesNo,
+                  }))}
                 >
-                  <Ionicons name="close" size={20} color={shared.pastries == null ? Colors.white : Colors.muted} />
+                  <Ionicons name="close" size={20} color={shared.pastriesNo ? Colors.white : Colors.muted} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -438,6 +458,23 @@ export default function RateScreen() {
 
           {/* Save button */}
           <View style={styles.footer}>
+            {(() => {
+              const currentCount = drinkType === 'coffee' ? drinkCounts.coffee : drinkCounts.matcha;
+              // After saving this rating, count will be currentCount + 1
+              const afterSave = currentCount + 1;
+              const remaining = NORMALIZE_THRESHOLD - afterSave;
+              if (remaining > 0) {
+                return (
+                  <View style={styles.unlockHint}>
+                    <Ionicons name="lock-closed-outline" size={13} color={Colors.muted} />
+                    <Text style={styles.unlockHintText}>
+                      Rate {remaining} more {drinkType === 'matcha' ? 'matcha' : 'coffee'} shop{remaining !== 1 ? 's' : ''} to unlock your scores
+                    </Text>
+                  </View>
+                );
+              }
+              return null;
+            })()}
             <Animated.View style={[styles.saveBtn, { backgroundColor: accentAnim }, saving && styles.saveBtnDisabled]}>
               <TouchableOpacity style={styles.saveBtnInner} onPress={handleSave} disabled={saving}>
                 {saving ? (
@@ -530,7 +567,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.milk,
   },
 
-  footer: { padding: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.milk },
+  footer: { padding: 16, paddingTop: 12, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.milk, gap: 10 },
+  unlockHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  unlockHintText: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontWeight: '500',
+  },
   saveBtn: { borderRadius: 8, overflow: 'hidden' },
   saveBtnInner: { paddingVertical: 15, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },

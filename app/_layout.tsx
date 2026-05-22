@@ -67,6 +67,14 @@ function RootLayoutNav() {
         name="user/[id]"
         options={{ presentation: 'card', animation: 'slide_from_right' }}
       />
+      <Stack.Screen
+        name="user-ratings/[id]"
+        options={{ presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="notifications"
+        options={{ presentation: 'card', animation: 'slide_from_right' }}
+      />
     </Stack>
   );
 }

@@ -207,4 +207,7 @@
 //   saveBtnText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
 // });
 
-export {};
+// Placeholder — real screen is commented out above until feature is built
+import React from 'react';
+import { View } from 'react-native';
+export default function AddReelScreen() { return <View />; }

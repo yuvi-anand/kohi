@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { CoffeeShop, Rating, ShopStats } from '../lib/types';
 import { Colors } from '../lib/colors';
-import { formatScore, overallColor, priceString, getClosingSoon } from '../lib/utils';
+import { formatScore, overallColor, priceString, getClosingSoon, normalizeScore } from '../lib/utils';
 
 interface Props {
   shop: CoffeeShop;
@@ -10,16 +11,22 @@ interface Props {
   shopStats?: ShopStats | null;
   distanceMi?: number | null;
   rank?: number;
+  // When provided, show this normalized score instead of raw rating.overall
+  // Pass null explicitly to hide personal score (pre-unlock state)
+  normalizedOverall?: number | null;
+  scoresUnlocked?: boolean; // false = user hasn't hit threshold yet
   onPress: () => void;
 }
 
-export default function ShopCard({ shop, rating, shopStats, distanceMi, rank, onPress }: Props) {
-  // Determine what to show in the right badge:
-  // 1. User's personal score if rated
-  // 2. Community avg if available
-  // 3. Empty neutral circle
-  const displayScore = rating?.overall ?? shopStats?.avg_overall ?? null;
-  const isPersonal = rating != null;
+export default function ShopCard({ shop, rating, shopStats, distanceMi, rank, normalizedOverall, scoresUnlocked, onPress }: Props) {
+  // Score display logic:
+  // - If scoresUnlocked === false: personal score is hidden (show community avg or —)
+  // - If normalizedOverall provided: show it as the personal score
+  // - Otherwise fall back to community avg or —
+  const isRatedButLocked = rating != null && scoresUnlocked === false;
+  const personalScore = isRatedButLocked ? null : (normalizedOverall ?? null);
+  const displayScore = personalScore ?? shopStats?.avg_overall ?? null;
+  const isPersonal = personalScore != null;
   const closingSoon = getClosingSoon(shop.hours, shop.open_now);
   const reviewCount = shopStats?.rating_count ?? 0;
 
@@ -71,7 +78,11 @@ export default function ShopCard({ shop, rating, shopStats, distanceMi, rank, on
 
       <View style={styles.right}>
         <View style={{ position: 'relative' }}>
-          {displayScore != null ? (
+          {isRatedButLocked ? (
+            <View style={styles.lockedBadge}>
+              <Ionicons name="lock-closed" size={14} color={Colors.muted} />
+            </View>
+          ) : displayScore != null ? (
             <View style={[styles.scoreBadge, { backgroundColor: overallColor(displayScore) }, !isPersonal && styles.communityBadge]}>
               <Text style={styles.scoreText}>{formatScore(displayScore)}</Text>
               {!isPersonal && <Text style={styles.communityLabel}>avg</Text>}
@@ -207,6 +218,16 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     fontSize: 8,
     fontWeight: '500',
+  },
+  lockedBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.milk,
+    backgroundColor: Colors.foam,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyBadge: {
     width: 36,

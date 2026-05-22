@@ -13,7 +13,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Rating, FeedItem, ShopStats } from '../../lib/types';
 import { Colors } from '../../lib/colors';
-import { getRatings, getFriendFeed, getShopStatsBatch } from '../../lib/api';
+import { getRatings, getFriendFeed, getShopStatsBatch, getUnreadNotificationCount } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
@@ -53,6 +53,7 @@ export default function FeedScreen() {
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [shopStats, setShopStats] = useState<Record<string, ShopStats>>({});
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const router = useRouter();
   const { user } = useAuth();
@@ -101,7 +102,15 @@ export default function FeedScreen() {
     router.push(`/rate/${item.shop_id}`);
   }
 
-  useFocusEffect(useCallback(() => { loadRatings(); loadFeed(); }, [loadRatings, loadFeed]));
+  const loadUnread = useCallback(async () => {
+    if (!user) return;
+    try {
+      const count = await getUnreadNotificationCount(user.id);
+      setUnreadCount(count);
+    } catch { }
+  }, [user]);
+
+  useFocusEffect(useCallback(() => { loadRatings(); loadFeed(); loadUnread(); }, [loadRatings, loadFeed, loadUnread]));
 
   // Filter out fast food / gas stations, then apply active filter
   const nearbyShops = shops.filter((s) => !isNonCoffeeShop(s.name));
@@ -130,7 +139,23 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.logo}>Kōhī</Text>
-        {locLoading && <ActivityIndicator size="small" color={Colors.muted} />}
+        <View style={styles.headerRight}>
+          {locLoading && <ActivityIndicator size="small" color={Colors.muted} style={{ marginRight: 8 }} />}
+          <TouchableOpacity
+            style={styles.bellBtn}
+            onPress={() => router.push('/notifications')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={24} color={Colors.espresso} />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadCount > 9 ? '9+' : String(unreadCount)}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {permissionDenied && (
@@ -283,14 +308,6 @@ export default function FeedScreen() {
                   ) : null}
                   <Text style={styles.activityTime}>{timeAgo(item.created_at)}</Text>
                   <View style={styles.activityFooter}>
-                    {shopStats[item.shop_id] && (
-                      <View style={styles.communityAvgRow}>
-                        <Text style={styles.communityAvgLabel}>avg</Text>
-                        <View style={[styles.communityAvgBadge, { backgroundColor: overallColor(shopStats[item.shop_id].avg_overall) }]}>
-                          <Text style={styles.communityAvgText}>{formatScore(shopStats[item.shop_id].avg_overall)}</Text>
-                        </View>
-                      </View>
-                    )}
                     <TouchableOpacity
                       style={styles.rateInlineBtn}
                       onPress={(e) => { e.stopPropagation(); handleRate(item); }}
@@ -300,9 +317,14 @@ export default function FeedScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
-                <View style={[styles.activityScore, { backgroundColor: overallColor(item.overall) }]}>
-                  <Text style={styles.activityScoreText}>{formatScore(item.overall)}</Text>
-                </View>
+                {shopStats[item.shop_id] && (
+                  <View style={styles.activityScoreWrap}>
+                    <View style={[styles.activityScore, { backgroundColor: overallColor(shopStats[item.shop_id].avg_overall) }]}>
+                      <Text style={styles.activityScoreText}>{formatScore(shopStats[item.shop_id].avg_overall)}</Text>
+                    </View>
+                    <Text style={styles.activityScoreLabel}>avg</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))
           )}
@@ -325,6 +347,17 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.milk,
   },
   logo: { fontSize: 26, fontWeight: '800', color: Colors.roast, letterSpacing: -0.5 },
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
+  bellBtn: { position: 'relative', padding: 4 },
+  badge: {
+    position: 'absolute', top: 0, right: 0,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#D4463B',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5, borderColor: Colors.white,
+  },
+  badgeText: { fontSize: 9, fontWeight: '800', color: Colors.white, lineHeight: 11 },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, paddingVertical: 8,
@@ -400,12 +433,15 @@ const styles = StyleSheet.create({
   activityName: { fontWeight: '600' },
   activityShop: { fontWeight: '500', color: Colors.caramel },
   activityTime: { fontSize: 11, color: Colors.muted, marginTop: 3 },
+  activityScoreWrap: {
+    alignItems: 'center', gap: 2, flexShrink: 0, alignSelf: 'flex-start',
+  },
   activityScore: {
     width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    alignSelf: 'flex-start',
+    alignItems: 'center', justifyContent: 'center',
   },
   activityScoreText: { fontSize: 12, fontWeight: '700', color: Colors.white },
+  activityScoreLabel: { fontSize: 9, fontWeight: '600', color: Colors.muted, textTransform: 'uppercase', letterSpacing: 0.3 },
 
   socialCta: {
     marginHorizontal: 16, marginTop: 8,

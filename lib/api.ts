@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ShopStats } from './types';
+import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ShopStats, AppNotification } from './types';
 // ReelSave import removed — reel feature commented out
 
 export async function upsertShop(shop: CoffeeShop): Promise<void> {
@@ -129,6 +129,13 @@ export async function followUser(followerId: string, followingId: string): Promi
     .from('follows')
     .insert({ follower_id: followerId, following_id: followingId });
   if (error) throw error;
+
+  // Create a follow notification for the person being followed (best-effort)
+  supabase.from('notifications').insert({
+    user_id: followingId,
+    type: 'follow',
+    actor_id: followerId,
+  }).then(() => {}).catch(() => {});
 }
 
 export async function unfollowUser(followerId: string, followingId: string): Promise<void> {
@@ -266,4 +273,54 @@ export async function searchUsers(query: string, currentUserId: string): Promise
     rating_count: countMap[p.id] ?? 0,
     is_following: followingSet.has(p.id),
   }));
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+export async function getNotifications(userId: string): Promise<AppNotification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  if (!data || data.length === 0) return [];
+
+  // Enrich actor info from profiles
+  const actorIds = [...new Set(data.map((n) => n.actor_id).filter(Boolean))];
+  const { data: profiles } = actorIds.length > 0
+    ? await supabase.from('profiles').select('id, username, name').in('id', actorIds)
+    : { data: [] };
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+
+  return data.map((n) => ({
+    id: n.id,
+    user_id: n.user_id,
+    type: n.type,
+    actor_id: n.actor_id,
+    actor_username: profileMap[n.actor_id]?.username ?? null,
+    actor_display_name: profileMap[n.actor_id]?.name ?? null,
+    read: n.read,
+    created_at: n.created_at,
+  }));
+}
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function markNotificationsRead(userId: string): Promise<void> {
+  await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('read', false);
 }

@@ -16,6 +16,7 @@ import { getRatings, getBookmarks, getShopsForIds } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { normalizeScore, NORMALIZE_THRESHOLD } from '../../lib/utils';
 import ShopCard from '../../components/ShopCard';
 
 type Section = 'been' | 'want';
@@ -69,6 +70,18 @@ export default function MyListScreen() {
     .filter((r) => (r.drink_type ?? 'coffee') === drinkType && shopById[r.shop_id])
     .sort((a, b) => b.overall - a.overall)
     .map((r) => ({ shop: shopById[r.shop_id] as CoffeeShop, rating: r }));
+
+  // Use raw allRatings count for the threshold — filteredRated drops shops not yet
+  // in the local cache, which would incorrectly keep scores locked.
+  const totalRatedCount = allRatings.filter(
+    (r) => (r.drink_type ?? 'coffee') === drinkType
+  ).length;
+  const scoresUnlocked = totalRatedCount >= NORMALIZE_THRESHOLD;
+  const userMax = scoresUnlocked
+    ? Math.max(...filteredRated.map((r) => r.rating.overall), 0)
+    : 0;
+  const remaining = NORMALIZE_THRESHOLD - totalRatedCount;
+  const progressPct = Math.min(totalRatedCount / NORMALIZE_THRESHOLD, 1);
 
   const bookmarkedShops: CoffeeShop[] = bookmarks
     .map((b) => shopById[b.shop_id])
@@ -135,11 +148,30 @@ export default function MyListScreen() {
         <FlatList
           data={filteredRated}
           keyExtractor={(item) => item.shop.id + item.rating.drink_type}
+          ListHeaderComponent={
+            !scoresUnlocked && filteredRated.length > 0 ? (
+              <View style={styles.unlockBanner}>
+                <View style={styles.unlockTop}>
+                  <Text style={styles.unlockTitle}>
+                    Rate {remaining} more to unlock your rankings
+                  </Text>
+                  <Text style={styles.unlockSub}>
+                    {filteredRated.length}/{NORMALIZE_THRESHOLD} shops rated
+                  </Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${progressPct * 100}%` }]} />
+                </View>
+              </View>
+            ) : null
+          }
           renderItem={({ item, index }) => (
             <ShopCard
               shop={item.shop}
               rating={item.rating}
               rank={index + 1}
+              scoresUnlocked={scoresUnlocked}
+              normalizedOverall={scoresUnlocked ? normalizeScore(item.rating.overall, userMax) : null}
               onPress={() => router.push(`/shop/${item.shop.id}`)}
             />
           )}
@@ -247,6 +279,49 @@ const styles = StyleSheet.create({
   emptyIcon: { marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.espresso, marginBottom: 8 },
   emptyText: { fontSize: 14, color: Colors.muted, textAlign: 'center', lineHeight: 20 },
+
+  unlockBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: Colors.white,
+    borderRadius: 10,
+    padding: 14,
+    shadowColor: Colors.espresso,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  unlockTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  unlockTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.espresso,
+    flex: 1,
+  },
+  unlockSub: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  progressTrack: {
+    height: 5,
+    backgroundColor: Colors.foam,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: Colors.caramel,
+    borderRadius: 3,
+  },
 
   reelPasteBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

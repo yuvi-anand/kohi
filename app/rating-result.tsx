@@ -5,17 +5,23 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../lib/colors';
-import { formatScore, overallColor } from '../lib/utils';
+import { formatScore, overallColor, NORMALIZE_THRESHOLD } from '../lib/utils';
 
 export default function RatingResultScreen() {
   const router = useRouter();
-  const { shopName, overall, shopId } = useLocalSearchParams<{
+  const { shopName, overall, shopId, ratingsAfter, drinkType } = useLocalSearchParams<{
     shopName: string;
     overall: string;
     shopId: string;
+    ratingsAfter: string;
+    drinkType: string;
   }>();
 
   const score = parseFloat(overall ?? '0');
+  const countAfter = parseInt(ratingsAfter ?? '0', 10);
+  const scoresUnlocked = countAfter >= NORMALIZE_THRESHOLD;
+  const justUnlocked = countAfter === NORMALIZE_THRESHOLD;
+  const remaining = NORMALIZE_THRESHOLD - countAfter;
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -33,10 +39,24 @@ export default function RatingResultScreen() {
           <Text style={styles.savedLabel}>Rating saved</Text>
           <Text style={styles.shopName} numberOfLines={2}>{shopName}</Text>
 
-          <Animated.View style={[styles.scoreBadge, { backgroundColor: overallColor(score), transform: [{ scale: scaleAnim }] }]}>
-            <Text style={styles.scoreText}>{formatScore(score)}</Text>
-            <Text style={styles.scoreDenom}>/10</Text>
-          </Animated.View>
+          {scoresUnlocked ? (
+            <Animated.View style={[styles.scoreBadge, { backgroundColor: overallColor(score), transform: [{ scale: scaleAnim }] }]}>
+              {justUnlocked && <Text style={styles.unlockBanner}>🎉 Scores unlocked!</Text>}
+              <Text style={styles.scoreText}>{formatScore(score)}</Text>
+              <Text style={styles.scoreDenom}>/10</Text>
+            </Animated.View>
+          ) : (
+            <Animated.View style={[styles.lockedBadge, { transform: [{ scale: scaleAnim }] }]}>
+              <Ionicons name="lock-closed" size={40} color={Colors.muted} />
+              <Text style={styles.lockedCount}>{countAfter}/{NORMALIZE_THRESHOLD}</Text>
+            </Animated.View>
+          )}
+
+          {!scoresUnlocked && (
+            <Text style={styles.lockedCaption}>
+              Rate {remaining} more {drinkType === 'matcha' ? 'matcha' : 'coffee'} shop{remaining !== 1 ? 's' : ''} to unlock your scores
+            </Text>
+          )}
 
           <View style={styles.actions}>
             <TouchableOpacity
@@ -74,14 +94,36 @@ const styles = StyleSheet.create({
   scoreBadge: {
     width: 140, height: 140, borderRadius: 70,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 48,
+    marginBottom: 16,
     shadowColor: Colors.espresso,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2, shadowRadius: 16, elevation: 8,
   },
+  unlockBanner: {
+    position: 'absolute', top: -28,
+    fontSize: 13, fontWeight: '700', color: Colors.caramel,
+  },
   scoreText: { fontSize: 52, fontWeight: '800', color: Colors.white, lineHeight: 56 },
   scoreDenom: { fontSize: 16, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
-  actions: { flexDirection: 'row', gap: 12, width: '100%' },
+  lockedBadge: {
+    width: 140, height: 140, borderRadius: 70,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+    backgroundColor: Colors.foam,
+    borderWidth: 2, borderColor: Colors.milk,
+    shadowColor: Colors.espresso,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+    gap: 4,
+  },
+  lockedCount: {
+    fontSize: 14, fontWeight: '700', color: Colors.muted,
+  },
+  lockedCaption: {
+    fontSize: 13, color: Colors.muted, fontWeight: '500',
+    textAlign: 'center', marginBottom: 32, lineHeight: 18,
+  },
+  actions: { flexDirection: 'row', gap: 12, width: '100%', marginTop: 16 },
   viewBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 14, borderRadius: 8,

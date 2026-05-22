@@ -82,6 +82,17 @@ export interface UserResult {
   is_following: boolean;
 }
 
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  type: 'follow';
+  actor_id: string | null;
+  actor_username?: string | null;
+  actor_display_name?: string | null;
+  read: boolean;
+  created_at: string;
+}
+
 // REEL SAVE FEATURE — commented out, infrastructure saved for later
 // export interface ReelSave {
 //   id?: string;
