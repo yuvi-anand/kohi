@@ -14,16 +14,18 @@ import {
   ScrollView,
   Animated,
   Easing,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../lib/colors';
 import { DrinkType } from '../../lib/types';
 import { useShops } from '../../context/shops';
 import { getRating, getRatings, upsertRating, upsertShop } from '../../lib/api';
 import { useAuth } from '../../context/auth';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { computeOverall, NORMALIZE_THRESHOLD } from '../../lib/utils';
 
 // Per-drink: only the quality score differs between coffee and matcha
@@ -69,6 +71,7 @@ export default function RateScreen() {
   const [shared, setShared] = useState<SharedState>(DEFAULT_SHARED);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [averages, setAverages] = useState<{
     coffeeQuality: number | null;
     matchaQuality: number | null;
@@ -171,12 +174,47 @@ export default function RateScreen() {
     shared.pastries
   );
 
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  }
+
+  async function uploadRatingPhoto(shopId: string): Promise<string | null> {
+    if (!photoUri || !user) return null;
+    try {
+      const response = await fetch(photoUri);
+      const blob = await response.blob();
+      const ext = photoUri.split('.').pop() ?? 'jpg';
+      const path = `${user.id}/${shopId}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('rating-photos')
+        .upload(path, blob, { upsert: false, contentType: `image/${ext}` });
+      if (error) throw error;
+      const { data } = supabase.storage.from('rating-photos').getPublicUrl(path);
+      return data.publicUrl;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleSave() {
     if (!user || !shop) { Alert.alert('Not signed in', 'Sign in to save ratings.'); return; }
     if (!isSupabaseConfigured()) { Alert.alert('Not configured', 'Set up Supabase to save ratings.'); return; }
     try {
       setSaving(true);
       await upsertShop(shop);
+      const photoUrl = await uploadRatingPhoto(shop.id);
       await upsertRating({
         user_id: user.id,
         shop_id: shop.id,
@@ -190,6 +228,7 @@ export default function RateScreen() {
         laptop_friendly: shared.laptopFriendly,
         overall,
         notes: shared.notes.trim() || undefined,
+        photo_url: photoUrl ?? undefined,
         visited_at: new Date().toISOString(),
       });
       const countAfter = (drinkType === 'coffee' ? drinkCounts.coffee : drinkCounts.matcha) + 1;
@@ -268,6 +307,27 @@ export default function RateScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {/* Photo picker */}
+            <TouchableOpacity style={styles.photoPicker} onPress={handlePickPhoto} activeOpacity={0.8}>
+              {photoUri ? (
+                <View style={styles.photoPreviewWrap}>
+                  <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                  <TouchableOpacity
+                    style={styles.photoRemoveBtn}
+                    onPress={() => setPhotoUri(null)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={22} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={24} color={Colors.muted} />
+                  <Text style={styles.photoPickerText}>Add a photo (optional)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             {/* Coffee / Matcha quality — per drink */}
             <View style={styles.criterionRow}>
               <View style={styles.criterionMeta}>
@@ -532,6 +592,17 @@ const styles = StyleSheet.create({
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
+
+  photoPicker: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderColor: Colors.milk, borderRadius: 8,
+    borderStyle: 'dashed', padding: 14, marginBottom: 8,
+    backgroundColor: Colors.foam,
+  },
+  photoPickerText: { fontSize: 14, color: Colors.muted, fontWeight: '500' },
+  photoPreviewWrap: { position: 'relative' },
+  photoPreview: { width: 80, height: 80, borderRadius: 8 },
+  photoRemoveBtn: { position: 'absolute', top: -8, right: -8 },
 
   criterionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   criterionMeta: { flexDirection: 'row', alignItems: 'center', width: 90, gap: 8 },

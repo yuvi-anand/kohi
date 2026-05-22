@@ -40,6 +40,7 @@ export interface Rating {
   laptop_friendly: boolean;
   overall: number;
   notes?: string;
+  photo_url?: string | null;
   visited_at?: string;
   created_at?: string;
 }
@@ -56,6 +57,7 @@ export interface Profile {
   username: string | null;
   name: string | null;
   bio: string | null;
+  avatar_url?: string | null;
   created_at?: string;
 }
 
@@ -64,6 +66,7 @@ export interface FeedItem {
   user_id: string;
   username: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
   shop_id: string;
   shop_name: string;
   shop_address: string;
@@ -91,6 +94,42 @@ export interface AppNotification {
   actor_display_name?: string | null;
   read: boolean;
   created_at: string;
+}
+
+export interface RatingLike {
+  id: string;
+  rating_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface RatingComment {
+  id: string;
+  rating_id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+  // enriched
+  username?: string | null;
+  display_name?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface FriendRating {
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url?: string | null;
+  overall: number;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  username: string | null;
+  name: string | null;
+  avatar_url?: string | null;
+  rating_count: number;
+  top_overall: number | null;
 }
 
 // REEL SAVE FEATURE — commented out, infrastructure saved for later

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ShopStats, AppNotification } from './types';
+import { CoffeeShop, Rating, Bookmark, Profile, DrinkType, FeedItem, UserResult, ShopStats, AppNotification, RatingLike, RatingComment, FriendRating, LeaderboardEntry } from './types';
 // ReelSave import removed — reel feature commented out
 
 export async function upsertShop(shop: CoffeeShop): Promise<void> {
@@ -119,7 +119,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return data;
 }
 
-export async function upsertProfile(profile: { id: string; username?: string | null; name?: string | null; bio?: string | null }): Promise<void> {
+export async function upsertProfile(profile: { id: string; username?: string | null; name?: string | null; bio?: string | null; avatar_url?: string | null }): Promise<void> {
   const { error } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
   if (error) throw error;
 }
@@ -178,7 +178,7 @@ export async function getFriendFeed(userId: string): Promise<FeedItem[]> {
 
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, username, name')
+    .select('id, username, name, avatar_url')
     .in('id', followingIds);
   const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
 
@@ -187,6 +187,7 @@ export async function getFriendFeed(userId: string): Promise<FeedItem[]> {
     user_id: r.user_id,
     username: profileMap[r.user_id]?.username ?? null,
     display_name: profileMap[r.user_id]?.name ?? null,
+    avatar_url: profileMap[r.user_id]?.avatar_url ?? null,
     shop_id: r.shop_id,
     shop_name: r.coffee_shops?.name ?? 'Unknown',
     shop_address: r.coffee_shops?.address ?? '',
@@ -195,6 +196,141 @@ export async function getFriendFeed(userId: string): Promise<FeedItem[]> {
     notes: r.notes,
     created_at: r.created_at,
   }));
+}
+
+// ── Rating Likes ─────────────────────────────────────────────────────────────
+
+export async function getRatingLikes(ratingId: string): Promise<RatingLike[]> {
+  const { data, error } = await supabase
+    .from('rating_likes')
+    .select('*')
+    .eq('rating_id', ratingId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function toggleRatingLike(ratingId: string, userId: string, currentlyLiked: boolean): Promise<void> {
+  if (currentlyLiked) {
+    const { error } = await supabase
+      .from('rating_likes')
+      .delete()
+      .eq('rating_id', ratingId)
+      .eq('user_id', userId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('rating_likes')
+      .insert({ rating_id: ratingId, user_id: userId });
+    if (error) throw error;
+  }
+}
+
+// ── Rating Comments ───────────────────────────────────────────────────────────
+
+export async function getRatingComments(ratingId: string): Promise<RatingComment[]> {
+  const { data, error } = await supabase
+    .from('rating_comments')
+    .select('*')
+    .eq('rating_id', ratingId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const comments = data ?? [];
+  if (comments.length === 0) return [];
+
+  const userIds = [...new Set(comments.map((c) => c.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, name, avatar_url')
+    .in('id', userIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+
+  return comments.map((c) => ({
+    ...c,
+    username: profileMap[c.user_id]?.username ?? null,
+    display_name: profileMap[c.user_id]?.name ?? null,
+    avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
+  }));
+}
+
+export async function addRatingComment(ratingId: string, userId: string, text: string): Promise<void> {
+  const { error } = await supabase
+    .from('rating_comments')
+    .insert({ rating_id: ratingId, user_id: userId, text });
+  if (error) throw error;
+}
+
+// ── Friend ratings for a shop ─────────────────────────────────────────────────
+
+export async function getFriendRatingsForShop(shopId: string, userId: string): Promise<FriendRating[]> {
+  const followingIds = await getFollowingIds(userId);
+  if (followingIds.length === 0) return [];
+
+  const { data: ratings, error } = await supabase
+    .from('ratings')
+    .select('user_id, overall')
+    .eq('shop_id', shopId)
+    .in('user_id', followingIds)
+    .order('overall', { ascending: false })
+    .limit(5);
+  if (error) return [];
+  const rows = ratings ?? [];
+  if (rows.length === 0) return [];
+
+  const userIds = rows.map((r: any) => r.user_id);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, name, avatar_url')
+    .in('id', userIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+
+  return rows.map((r: any) => ({
+    user_id: r.user_id,
+    username: profileMap[r.user_id]?.username ?? null,
+    display_name: profileMap[r.user_id]?.name ?? null,
+    avatar_url: profileMap[r.user_id]?.avatar_url ?? null,
+    overall: r.overall,
+  }));
+}
+
+// ── Leaderboard ───────────────────────────────────────────────────────────────
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  // Get all profiles
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, name, avatar_url');
+
+  if (!profiles || profiles.length === 0) return [];
+
+  const profileIds = profiles.map((p) => p.id);
+
+  // Get rating counts and top scores per user
+  const { data: ratingRows } = await supabase
+    .from('ratings')
+    .select('user_id, overall')
+    .in('user_id', profileIds);
+
+  const countMap: Record<string, number> = {};
+  const maxMap: Record<string, number> = {};
+  for (const r of (ratingRows ?? [])) {
+    countMap[r.user_id] = (countMap[r.user_id] ?? 0) + 1;
+    if (maxMap[r.user_id] == null || r.overall > maxMap[r.user_id]) {
+      maxMap[r.user_id] = r.overall;
+    }
+  }
+
+  return profiles
+    .map((p) => ({
+      id: p.id,
+      username: p.username,
+      name: p.name,
+      avatar_url: p.avatar_url,
+      rating_count: countMap[p.id] ?? 0,
+      top_overall: maxMap[p.id] ?? null,
+    }))
+    .filter((e) => e.rating_count > 0)
+    .sort((a, b) => b.rating_count - a.rating_count)
+    .slice(0, 20);
 }
 
 // REEL SAVE FEATURE — commented out, infrastructure saved for later

@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -188,9 +189,13 @@ export default function UserProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Avatar + info */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          {profile.avatar_url ? (
+            <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+          )}
           <View style={styles.nameSection}>
             {profile.name ? (
               <Text style={styles.displayName}>{profile.name}</Text>
@@ -388,6 +393,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.caramel,
     alignItems: 'center', justifyContent: 'center', marginBottom: 14,
   },
+  avatarImage: { width: 80, height: 80, borderRadius: 40, marginBottom: 14 },
   avatarText: { fontSize: 32, fontWeight: '700', color: Colors.white },
   nameSection: { alignItems: 'center', gap: 4 },
   displayName: { fontSize: 20, fontWeight: '700', color: Colors.espresso },

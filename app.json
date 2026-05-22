@@ -17,6 +17,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Kōhī uses your location to find nearby coffee shops.",
+        "NSPhotoLibraryUsageDescription": "Kōhī needs photo library access to upload your avatar and rating photos.",
+        "NSCameraUsageDescription": "Kōhī needs camera access to take photos for ratings.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.yuvianand.kohi"
@@ -40,7 +42,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-location"
+      "expo-location",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kōhī needs photo library access to upload your avatar and rating photos.",
+          "cameraPermission": "Kōhī needs camera access to take photos for ratings."
+        }
+      ]
     ],
     "extra": {
       "router": {},

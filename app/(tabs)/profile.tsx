@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
-  TextInput, ActivityIndicator, ScrollView, Alert,
+  TextInput, ActivityIndicator, ScrollView, Alert, Image,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../lib/colors';
 import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds, getFollowCounts } from '../../lib/api';
 import { Rating, DrinkType } from '../../lib/types';
 import { formatScore, overallColor, normalizeScore, NORMALIZE_THRESHOLD, timeAgo } from '../../lib/utils';
@@ -32,6 +33,8 @@ export default function ProfileScreen() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftUsername, setDraftUsername] = useState('');
@@ -65,11 +68,48 @@ export default function ProfileScreen() {
         setName(profile.name ?? '');
         setUsername(profile.username ?? '');
         setBio(profile.bio ?? '');
+        setAvatarUrl(profile.avatar_url ?? null);
       }
     } catch { /* silently fail */ }
   }, [user]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  async function handlePickAvatar() {
+    if (!user) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setUploadingAvatar(true);
+    try {
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const ext = asset.uri.split('.').pop() ?? 'jpg';
+      const path = `${user.id}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      const url = data.publicUrl + `?t=${Date.now()}`;
+      await upsertProfile({ id: user.id, avatar_url: url });
+      setAvatarUrl(url);
+    } catch (e: any) {
+      Alert.alert('Upload failed', e.message ?? 'Could not upload avatar.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   function startEdit() {
     setDraftName(name); setDraftUsername(username); setDraftBio(bio); setEditing(true);
@@ -148,9 +188,24 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Avatar + info */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.85} style={styles.avatarWrap}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            )}
+            {uploadingAvatar ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color={Colors.white} size="small" />
+              </View>
+            ) : (
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={12} color={Colors.white} />
+              </View>
+            )}
+          </TouchableOpacity>
 
           {editing ? (
             <View style={styles.editFields}>
@@ -366,8 +421,12 @@ const styles = StyleSheet.create({
   settingsBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.foam },
 
   avatarSection: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 32 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.caramel, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  avatarWrap: { position: 'relative', marginBottom: 14 },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.caramel, alignItems: 'center', justifyContent: 'center' },
+  avatarImage: { width: 80, height: 80, borderRadius: 40 },
   avatarText: { fontSize: 32, fontWeight: '700', color: Colors.white },
+  avatarOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+  avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.caramel, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.cream },
   nameSection: { alignItems: 'center', gap: 4 },
   displayName: { fontSize: 20, fontWeight: '700', color: Colors.espresso },
   displayUsername: { fontSize: 14, color: Colors.muted, fontWeight: '500' },

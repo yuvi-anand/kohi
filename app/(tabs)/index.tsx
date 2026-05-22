@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -141,6 +142,13 @@ export default function FeedScreen() {
         <Text style={styles.logo}>Kōhī</Text>
         <View style={styles.headerRight}>
           {locLoading && <ActivityIndicator size="small" color={Colors.muted} style={{ marginRight: 8 }} />}
+          <TouchableOpacity
+            style={styles.trophyBtn}
+            onPress={() => router.push('/leaderboard')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trophy-outline" size={22} color={Colors.caramel} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.bellBtn}
             onPress={() => router.push('/notifications')}
@@ -288,9 +296,13 @@ export default function FeedScreen() {
                   activeOpacity={0.7}
                   style={styles.activityAvatar}
                 >
-                  <Text style={styles.activityAvatarText}>
-                    {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
-                  </Text>
+                  {item.avatar_url ? (
+                    <Image source={{ uri: item.avatar_url }} style={styles.activityAvatarImg} />
+                  ) : (
+                    <Text style={styles.activityAvatarText}>
+                      {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
+                    </Text>
+                  )}
                 </TouchableOpacity>
                 <View style={styles.activityBody}>
                   <TouchableOpacity onPress={() => router.push('/user/' + item.user_id)} activeOpacity={0.7}>
@@ -348,6 +360,7 @@ const styles = StyleSheet.create({
   },
   logo: { fontSize: 26, fontWeight: '800', color: Colors.roast, letterSpacing: -0.5 },
   headerRight: { flexDirection: 'row', alignItems: 'center' },
+  trophyBtn: { padding: 4, marginRight: 4 },
   bellBtn: { position: 'relative', padding: 4 },
   badge: {
     position: 'absolute', top: 0, right: 0,
@@ -427,6 +440,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
+  activityAvatarImg: { width: 40, height: 40, borderRadius: 20 },
   activityAvatarText: { fontSize: 16, fontWeight: '600', color: Colors.white },
   activityBody: { flex: 1 },
   activityText: { fontSize: 13, color: Colors.espresso, lineHeight: 18 },
