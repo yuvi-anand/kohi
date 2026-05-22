@@ -11,11 +11,10 @@ import {
   Image,
   Linking,
   Share,
-  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { CoffeeShop, Rating, ShopStats, RatingLike, RatingComment, FriendRating } from '../../lib/types';
+import { CoffeeShop, Rating, ShopStats, FriendRating } from '../../lib/types';
 import { Colors } from '../../lib/colors';
 import { useShops } from '../../context/shops';
 import {
@@ -25,16 +24,12 @@ import {
   removeBookmark,
   upsertShop,
   getShopStats,
-  getRatingLikes,
-  toggleRatingLike,
-  getRatingComments,
-  addRatingComment,
   getFriendRatingsForShop,
 } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import RatingBar from '../../components/RatingBar';
-import { formatScore, overallColor, priceString, timeAgo } from '../../lib/utils';
+import { formatScore, overallColor, priceString } from '../../lib/utils';
 
 const CRITERIA: { key: keyof Rating; label: string; emoji: string; max: number }[] = [
   { key: 'coffee_quality', label: 'Coffee Quality', emoji: '☕', max: 10 },
@@ -55,11 +50,6 @@ export default function ShopDetailScreen() {
   const [bookmarkLoading, setBookmarkLoading] = useState(false);
   const [shopStats, setShopStats] = useState<ShopStats | null>(null);
   const [hoursExpanded, setHoursExpanded] = useState(false);
-  const [likes, setLikes] = useState<RatingLike[]>([]);
-  const [likeLoading, setLikeLoading] = useState(false);
-  const [comments, setComments] = useState<RatingComment[]>([]);
-  const [commentText, setCommentText] = useState('');
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [friendRatings, setFriendRatings] = useState<FriendRating[]>([]);
 
   const load = useCallback(async () => {
@@ -74,10 +64,6 @@ export default function ShopDetailScreen() {
       setBookmarked(bookmarks.some((b) => b.shop_id === id));
       getShopStats(id).then(setShopStats).catch(() => {});
       getFriendRatingsForShop(id, user.id).then(setFriendRatings).catch(() => {});
-      if (r?.id) {
-        getRatingLikes(r.id).then(setLikes).catch(() => {});
-        getRatingComments(r.id).then(setComments).catch(() => {});
-      }
     } catch {
       // silently fail
     } finally {
@@ -90,36 +76,6 @@ export default function ShopDetailScreen() {
       load();
     }, [load])
   );
-
-  async function handleToggleLike() {
-    if (!user || !rating?.id) return;
-    const alreadyLiked = likes.some((l) => l.user_id === user.id);
-    setLikeLoading(true);
-    try {
-      await toggleRatingLike(rating.id, user.id, alreadyLiked);
-      const updated = await getRatingLikes(rating.id);
-      setLikes(updated);
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setLikeLoading(false);
-    }
-  }
-
-  async function handleAddComment() {
-    if (!user || !rating?.id || !commentText.trim()) return;
-    setCommentSubmitting(true);
-    try {
-      await addRatingComment(rating.id, user.id, commentText.trim());
-      setCommentText('');
-      const updated = await getRatingComments(rating.id);
-      setComments(updated);
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }
 
   async function handleToggleBookmark() {
     if (!user || !shop) return;
@@ -328,6 +284,15 @@ export default function ShopDetailScreen() {
           <View style={styles.ratingCard}>
             <Text style={styles.sectionTitle}>Your Ratings</Text>
 
+            {/* Rating photo — shown above breakdown */}
+            {rating.photo_url ? (
+              <Image
+                source={{ uri: rating.photo_url }}
+                style={styles.ratingPhoto}
+                resizeMode="cover"
+              />
+            ) : null}
+
             {shopStats && shopStats.rating_count > 1 && (
               <View style={styles.globalStatsBox}>
                 <Text style={styles.globalStatsTitle}>Community ({shopStats.rating_count} ratings)</Text>
@@ -416,81 +381,6 @@ export default function ShopDetailScreen() {
                 <Text style={styles.notesText}>{rating.notes}</Text>
               </View>
             ) : null}
-
-            {/* Rating photo */}
-            {rating.photo_url ? (
-              <Image source={{ uri: rating.photo_url }} style={styles.ratingPhoto} resizeMode="cover" />
-            ) : null}
-
-            {/* Likes */}
-            <View style={styles.likesRow}>
-              <TouchableOpacity
-                style={styles.likeBtn}
-                onPress={handleToggleLike}
-                disabled={likeLoading || !rating.id}
-                activeOpacity={0.7}
-              >
-                {likeLoading ? (
-                  <ActivityIndicator size="small" color={Colors.error} />
-                ) : (
-                  <Ionicons
-                    name={likes.some((l) => l.user_id === user?.id) ? 'heart' : 'heart-outline'}
-                    size={20}
-                    color={likes.some((l) => l.user_id === user?.id) ? Colors.error : Colors.muted}
-                  />
-                )}
-                <Text style={styles.likesCount}>{likes.length}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Comments */}
-            <View style={styles.commentsSection}>
-              <Text style={styles.commentsTitle}>Comments</Text>
-              {comments.map((c) => {
-                const initials = (c.display_name?.[0] ?? c.username?.[0] ?? '?').toUpperCase();
-                return (
-                  <View key={c.id} style={styles.commentRow}>
-                    {c.avatar_url ? (
-                      <Image source={{ uri: c.avatar_url }} style={styles.commentAvatar} />
-                    ) : (
-                      <View style={styles.commentAvatarFallback}>
-                        <Text style={styles.commentAvatarText}>{initials}</Text>
-                      </View>
-                    )}
-                    <View style={styles.commentBody}>
-                      <Text style={styles.commentUser}>
-                        {c.display_name ?? (c.username ? `@${c.username}` : 'User')}
-                      </Text>
-                      <Text style={styles.commentText}>{c.text}</Text>
-                      <Text style={styles.commentTime}>{timeAgo(c.created_at)}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-              <View style={styles.commentInputRow}>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="Add a comment…"
-                  placeholderTextColor={Colors.muted}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  returnKeyType="send"
-                  onSubmitEditing={handleAddComment}
-                />
-                <TouchableOpacity
-                  onPress={handleAddComment}
-                  disabled={!commentText.trim() || commentSubmitting}
-                  style={styles.commentSendBtn}
-                  activeOpacity={0.7}
-                >
-                  {commentSubmitting ? (
-                    <ActivityIndicator size="small" color={Colors.caramel} />
-                  ) : (
-                    <Ionicons name="send" size={18} color={commentText.trim() ? Colors.caramel : Colors.milk} />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
           </View>
         ) : (
           <View style={styles.unratedCard}>
@@ -738,25 +628,7 @@ const styles = StyleSheet.create({
   friendScoreBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   friendScoreText: { fontSize: 10, fontWeight: '700', color: Colors.white },
 
-  ratingPhoto: { width: '100%', height: 180, borderRadius: 8, marginTop: 14 },
-
-  likesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-  likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1.5, borderColor: Colors.milk },
-  likesCount: { fontSize: 13, fontWeight: '600', color: Colors.muted },
-
-  commentsSection: { marginTop: 14 },
-  commentsTitle: { fontSize: 13, fontWeight: '700', color: Colors.espresso, marginBottom: 10 },
-  commentRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  commentAvatar: { width: 30, height: 30, borderRadius: 15 },
-  commentAvatarFallback: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.latte, alignItems: 'center', justifyContent: 'center' },
-  commentAvatarText: { fontSize: 12, fontWeight: '700', color: Colors.white },
-  commentBody: { flex: 1 },
-  commentUser: { fontSize: 12, fontWeight: '700', color: Colors.espresso },
-  commentText: { fontSize: 13, color: Colors.roast, marginTop: 2, lineHeight: 18 },
-  commentTime: { fontSize: 10, color: Colors.muted, marginTop: 2 },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.foam, paddingTop: 10 },
-  commentInput: { flex: 1, fontSize: 14, color: Colors.espresso, paddingVertical: 6 },
-  commentSendBtn: { padding: 4 },
+  ratingPhoto: { width: '100%', aspectRatio: 16 / 9, borderRadius: 10, marginBottom: 14 },
 
   unratedCard: {
     backgroundColor: Colors.white,

@@ -182,7 +182,7 @@ export default function RateScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
     if (!result.canceled && result.assets?.[0]) {

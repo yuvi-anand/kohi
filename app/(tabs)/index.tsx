@@ -9,12 +9,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  TextInput,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Rating, FeedItem, ShopStats } from '../../lib/types';
+import { Rating, FeedItem, ShopStats, RatingComment } from '../../lib/types';
 import { Colors } from '../../lib/colors';
-import { getRatings, getFriendFeed, getShopStatsBatch, getUnreadNotificationCount } from '../../lib/api';
+import { getRatings, getFriendFeed, getShopStatsBatch, getUnreadNotificationCount, getRatingLikes, toggleRatingLike, getRatingComments, addRatingComment } from '../../lib/api';
 import { useAuth } from '../../context/auth';
 import { useLocation } from '../../context/location';
 import { useShops } from '../../context/shops';
@@ -56,6 +57,16 @@ export default function FeedScreen() {
   const [shopStats, setShopStats] = useState<Record<string, ShopStats>>({});
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Per-rating-id like/comment state for feed cards
+  const [feedLikeCounts, setFeedLikeCounts] = useState<Record<string, number>>({});
+  const [feedLikedByMe, setFeedLikedByMe] = useState<Record<string, boolean>>({});
+  const [feedLikeLoading, setFeedLikeLoading] = useState<Record<string, boolean>>({});
+  const [feedCommentCounts, setFeedCommentCounts] = useState<Record<string, number>>({});
+  const [feedCommentsExpanded, setFeedCommentsExpanded] = useState<Record<string, boolean>>({});
+  const [feedComments, setFeedComments] = useState<Record<string, RatingComment[]>>({});
+  const [feedCommentText, setFeedCommentText] = useState<Record<string, string>>({});
+  const [feedCommentSubmitting, setFeedCommentSubmitting] = useState<Record<string, boolean>>({});
+
   const router = useRouter();
   const { user } = useAuth();
   const { loading: locLoading, permissionDenied, coords } = useLocation();
@@ -87,6 +98,37 @@ export default function FeedScreen() {
       setFeedLoaded(true);
       const uniqueShopIds = [...new Set(items.map(i => i.shop_id))];
       getShopStatsBatch(uniqueShopIds).then(setShopStats).catch(() => {});
+
+      // Batch-load like counts for each feed item
+      const ratingIds = items.map(i => i.rating_id).filter(Boolean);
+      if (ratingIds.length > 0) {
+        const likeResults = await Promise.allSettled(
+          ratingIds.map(rid => getRatingLikes(rid))
+        );
+        const counts: Record<string, number> = {};
+        const likedByMe: Record<string, boolean> = {};
+        likeResults.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            const rid = ratingIds[idx];
+            counts[rid] = result.value.length;
+            likedByMe[rid] = result.value.some(l => l.user_id === user.id);
+          }
+        });
+        setFeedLikeCounts(counts);
+        setFeedLikedByMe(likedByMe);
+
+        // Load comment counts too
+        const commentResults = await Promise.allSettled(
+          ratingIds.map(rid => getRatingComments(rid))
+        );
+        const commentCounts: Record<string, number> = {};
+        commentResults.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            commentCounts[ratingIds[idx]] = result.value.length;
+          }
+        });
+        setFeedCommentCounts(commentCounts);
+      }
     } catch { } finally {
       setFeedLoading(false);
     }
@@ -101,6 +143,56 @@ export default function FeedScreen() {
   function handleRate(item: FeedItem) {
     addToCache([{ id: item.shop_id, name: item.shop_name, address: item.shop_address }]);
     router.push(`/rate/${item.shop_id}`);
+  }
+
+  async function handleFeedToggleLike(ratingId: string) {
+    if (!user) return;
+    const alreadyLiked = feedLikedByMe[ratingId] ?? false;
+    setFeedLikeLoading(prev => ({ ...prev, [ratingId]: true }));
+    // Optimistic update
+    setFeedLikedByMe(prev => ({ ...prev, [ratingId]: !alreadyLiked }));
+    setFeedLikeCounts(prev => ({ ...prev, [ratingId]: (prev[ratingId] ?? 0) + (alreadyLiked ? -1 : 1) }));
+    try {
+      await toggleRatingLike(ratingId, user.id, alreadyLiked);
+      const updated = await getRatingLikes(ratingId);
+      setFeedLikeCounts(prev => ({ ...prev, [ratingId]: updated.length }));
+      setFeedLikedByMe(prev => ({ ...prev, [ratingId]: updated.some(l => l.user_id === user.id) }));
+    } catch {
+      // Revert optimistic update on error
+      setFeedLikedByMe(prev => ({ ...prev, [ratingId]: alreadyLiked }));
+      setFeedLikeCounts(prev => ({ ...prev, [ratingId]: (prev[ratingId] ?? 0) + (alreadyLiked ? 1 : -1) }));
+    } finally {
+      setFeedLikeLoading(prev => ({ ...prev, [ratingId]: false }));
+    }
+  }
+
+  async function handleFeedToggleComments(ratingId: string) {
+    const nowExpanded = !feedCommentsExpanded[ratingId];
+    setFeedCommentsExpanded(prev => ({ ...prev, [ratingId]: nowExpanded }));
+    // Fetch comments only when first expanding
+    if (nowExpanded && !feedComments[ratingId]) {
+      try {
+        const comments = await getRatingComments(ratingId);
+        setFeedComments(prev => ({ ...prev, [ratingId]: comments }));
+        setFeedCommentCounts(prev => ({ ...prev, [ratingId]: comments.length }));
+      } catch { }
+    }
+  }
+
+  async function handleFeedAddComment(ratingId: string) {
+    if (!user) return;
+    const text = (feedCommentText[ratingId] ?? '').trim();
+    if (!text) return;
+    setFeedCommentSubmitting(prev => ({ ...prev, [ratingId]: true }));
+    try {
+      await addRatingComment(ratingId, user.id, text);
+      setFeedCommentText(prev => ({ ...prev, [ratingId]: '' }));
+      const updated = await getRatingComments(ratingId);
+      setFeedComments(prev => ({ ...prev, [ratingId]: updated }));
+      setFeedCommentCounts(prev => ({ ...prev, [ratingId]: updated.length }));
+    } catch { } finally {
+      setFeedCommentSubmitting(prev => ({ ...prev, [ratingId]: false }));
+    }
   }
 
   const loadUnread = useCallback(async () => {
@@ -284,61 +376,161 @@ export default function FeedScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            feedItems.map((item) => (
-              <TouchableOpacity
-                key={item.rating_id}
-                style={styles.activityCard}
-                onPress={() => router.push(`/shop/${item.shop_id}`)}
-                activeOpacity={0.8}
-              >
-                <TouchableOpacity
-                  onPress={() => router.push('/user/' + item.user_id)}
-                  activeOpacity={0.7}
-                  style={styles.activityAvatar}
-                >
-                  {item.avatar_url ? (
-                    <Image source={{ uri: item.avatar_url }} style={styles.activityAvatarImg} />
-                  ) : (
-                    <Text style={styles.activityAvatarText}>
-                      {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <View style={styles.activityBody}>
-                  <TouchableOpacity onPress={() => router.push('/user/' + item.user_id)} activeOpacity={0.7}>
-                    <Text style={styles.activityText}>
-                      <Text style={styles.activityName}>
-                        {item.display_name ?? (item.username ? `@${item.username}` : 'Someone')}
-                      </Text>
-                      {' rated '}
-                      <Text style={styles.activityShop}>{item.shop_name}</Text>
-                      {' '}{item.drink_type === 'matcha' ? '🍵' : '☕'}
-                    </Text>
-                  </TouchableOpacity>
-                  {item.notes ? (
-                    <Text style={styles.activityNote} numberOfLines={2}>"{item.notes}"</Text>
-                  ) : null}
-                  <Text style={styles.activityTime}>{timeAgo(item.created_at)}</Text>
-                  <View style={styles.activityFooter}>
+            feedItems.map((item) => {
+              const rid = item.rating_id;
+              const likeCount = feedLikeCounts[rid] ?? 0;
+              const liked = feedLikedByMe[rid] ?? false;
+              const likeLoading = feedLikeLoading[rid] ?? false;
+              const commentCount = feedCommentCounts[rid] ?? 0;
+              const expanded = feedCommentsExpanded[rid] ?? false;
+              const comments = feedComments[rid] ?? [];
+              const commentText = feedCommentText[rid] ?? '';
+              const commentSubmitting = feedCommentSubmitting[rid] ?? false;
+
+              return (
+                <View key={rid} style={styles.activityCardWrap}>
+                  <TouchableOpacity
+                    style={styles.activityCard}
+                    onPress={() => router.push(`/shop/${item.shop_id}`)}
+                    activeOpacity={0.8}
+                  >
                     <TouchableOpacity
-                      style={styles.rateInlineBtn}
-                      onPress={(e) => { e.stopPropagation(); handleRate(item); }}
+                      onPress={() => router.push('/user/' + item.user_id)}
                       activeOpacity={0.7}
+                      style={styles.activityAvatar}
                     >
-                      <Text style={styles.rateInlineBtnText}>Rate</Text>
+                      {item.avatar_url ? (
+                        <Image source={{ uri: item.avatar_url }} style={styles.activityAvatarImg} />
+                      ) : (
+                        <Text style={styles.activityAvatarText}>
+                          {(item.display_name?.[0] ?? item.username?.[0] ?? '?').toUpperCase()}
+                        </Text>
+                      )}
                     </TouchableOpacity>
-                  </View>
-                </View>
-                {shopStats[item.shop_id] && (
-                  <View style={styles.activityScoreWrap}>
-                    <View style={[styles.activityScore, { backgroundColor: overallColor(shopStats[item.shop_id].avg_overall) }]}>
-                      <Text style={styles.activityScoreText}>{formatScore(shopStats[item.shop_id].avg_overall)}</Text>
+                    <View style={styles.activityBody}>
+                      <TouchableOpacity onPress={() => router.push('/user/' + item.user_id)} activeOpacity={0.7}>
+                        <Text style={styles.activityText}>
+                          <Text style={styles.activityName}>
+                            {item.display_name ?? (item.username ? `@${item.username}` : 'Someone')}
+                          </Text>
+                          {' rated '}
+                          <Text style={styles.activityShop}>{item.shop_name}</Text>
+                          {' '}{item.drink_type === 'matcha' ? '🍵' : '☕'}
+                        </Text>
+                      </TouchableOpacity>
+                      {item.notes ? (
+                        <Text style={styles.activityNote} numberOfLines={2}>"{item.notes}"</Text>
+                      ) : null}
+                      <Text style={styles.activityTime}>{timeAgo(item.created_at)}</Text>
+                      <View style={styles.activityFooter}>
+                        <TouchableOpacity
+                          style={styles.rateInlineBtn}
+                          onPress={(e) => { e.stopPropagation(); handleRate(item); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.rateInlineBtnText}>Rate</Text>
+                        </TouchableOpacity>
+                        {/* Heart button */}
+                        <TouchableOpacity
+                          style={styles.feedActionBtn}
+                          onPress={(e) => { e.stopPropagation(); handleFeedToggleLike(rid); }}
+                          disabled={likeLoading}
+                          activeOpacity={0.7}
+                        >
+                          {likeLoading ? (
+                            <ActivityIndicator size="small" color={Colors.error} />
+                          ) : (
+                            <Ionicons
+                              name={liked ? 'heart' : 'heart-outline'}
+                              size={18}
+                              color={liked ? Colors.error : Colors.muted}
+                            />
+                          )}
+                          {likeCount > 0 && (
+                            <Text style={[styles.feedActionCount, liked && { color: Colors.error }]}>
+                              {likeCount}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                        {/* Comment button */}
+                        <TouchableOpacity
+                          style={styles.feedActionBtn}
+                          onPress={(e) => { e.stopPropagation(); handleFeedToggleComments(rid); }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={expanded ? 'chatbubble' : 'chatbubble-outline'}
+                            size={17}
+                            color={expanded ? Colors.caramel : Colors.muted}
+                          />
+                          {commentCount > 0 && (
+                            <Text style={[styles.feedActionCount, expanded && { color: Colors.caramel }]}>
+                              {commentCount}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <Text style={styles.activityScoreLabel}>avg</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))
+                    {shopStats[item.shop_id] && (
+                      <View style={styles.activityScoreWrap}>
+                        <View style={[styles.activityScore, { backgroundColor: overallColor(shopStats[item.shop_id].avg_overall) }]}>
+                          <Text style={styles.activityScoreText}>{formatScore(shopStats[item.shop_id].avg_overall)}</Text>
+                        </View>
+                        <Text style={styles.activityScoreLabel}>avg</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Inline comment section */}
+                  {expanded && (
+                    <View style={styles.inlineComments}>
+                      {comments.map((c) => {
+                        const initial = (c.display_name?.[0] ?? c.username?.[0] ?? '?').toUpperCase();
+                        return (
+                          <View key={c.id} style={styles.inlineCommentRow}>
+                            {c.avatar_url ? (
+                              <Image source={{ uri: c.avatar_url }} style={styles.inlineCommentAvatar} />
+                            ) : (
+                              <View style={styles.inlineCommentAvatarFallback}>
+                                <Text style={styles.inlineCommentAvatarText}>{initial}</Text>
+                              </View>
+                            )}
+                            <View style={styles.inlineCommentBody}>
+                              <Text style={styles.inlineCommentUser}>
+                                {c.display_name ?? (c.username ? `@${c.username}` : 'User')}
+                              </Text>
+                              <Text style={styles.inlineCommentText}>{c.text}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                      <View style={styles.inlineCommentInput}>
+                        <TextInput
+                          style={styles.inlineCommentTextInput}
+                          placeholder="Add a comment…"
+                          placeholderTextColor={Colors.muted}
+                          value={commentText}
+                          onChangeText={(t) => setFeedCommentText(prev => ({ ...prev, [rid]: t }))}
+                          returnKeyType="send"
+                          onSubmitEditing={() => handleFeedAddComment(rid)}
+                        />
+                        <TouchableOpacity
+                          onPress={() => handleFeedAddComment(rid)}
+                          disabled={!commentText.trim() || commentSubmitting}
+                          activeOpacity={0.7}
+                        >
+                          {commentSubmitting ? (
+                            <ActivityIndicator size="small" color={Colors.caramel} />
+                          ) : (
+                            <Ionicons name="send" size={18} color={commentText.trim() ? Colors.caramel : Colors.milk} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })
           )}
         </ScrollView>
       )}
@@ -425,8 +617,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
-    marginHorizontal: 16,
-    marginBottom: 10,
     borderRadius: 8,
     padding: 14,
     gap: 12,
@@ -481,4 +671,29 @@ const styles = StyleSheet.create({
   rateInlineBtnText: { fontSize: 11, fontWeight: '600', color: Colors.caramel },
   findFriendsCta: { backgroundColor: Colors.caramel, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 24, marginTop: 4 },
   findFriendsCtaText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+
+  // Likes + comments on feed cards
+  activityCardWrap: { marginHorizontal: 16, marginBottom: 10 },
+  feedActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 4, paddingHorizontal: 2 },
+  feedActionCount: { fontSize: 12, fontWeight: '600', color: Colors.muted },
+
+  inlineComments: {
+    backgroundColor: Colors.foam,
+    borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6,
+    borderTopWidth: 1, borderTopColor: Colors.milk,
+  },
+  inlineCommentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
+  inlineCommentAvatar: { width: 26, height: 26, borderRadius: 13 },
+  inlineCommentAvatarFallback: { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.latte, alignItems: 'center', justifyContent: 'center' },
+  inlineCommentAvatarText: { fontSize: 11, fontWeight: '700', color: Colors.white },
+  inlineCommentBody: { flex: 1 },
+  inlineCommentUser: { fontSize: 11, fontWeight: '700', color: Colors.espresso },
+  inlineCommentText: { fontSize: 12, color: Colors.roast, lineHeight: 17, marginTop: 1 },
+  inlineCommentInput: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderTopWidth: 1, borderTopColor: Colors.milk,
+    paddingTop: 8, marginTop: 2,
+  },
+  inlineCommentTextInput: { flex: 1, fontSize: 13, color: Colors.espresso, paddingVertical: 4 },
 });

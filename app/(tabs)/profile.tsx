@@ -10,7 +10,7 @@ import { Colors } from '../../lib/colors';
 import { useAuth } from '../../context/auth';
 import { useShops } from '../../context/shops';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
-import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds, getFollowCounts } from '../../lib/api';
+import { getRatings, getBookmarks, getProfile, upsertProfile, getShopsForIds, getFollowCounts, getRatingLikes, getRatingComments } from '../../lib/api';
 import { Rating, DrinkType } from '../../lib/types';
 import { formatScore, overallColor, normalizeScore, NORMALIZE_THRESHOLD, timeAgo } from '../../lib/utils';
 
@@ -29,6 +29,10 @@ export default function ProfileScreen() {
   const [allRatings, setAllRatings] = useState<Rating[]>([]);
   const [rankDrinkType, setRankDrinkType] = useState<DrinkType>('coffee');
   const [topExpanded, setTopExpanded] = useState(false);
+
+  // Per-rating like/comment counts for recent activity feed
+  const [activityLikeCounts, setActivityLikeCounts] = useState<Record<string, number>>({});
+  const [activityCommentCounts, setActivityCommentCounts] = useState<Record<string, number>>({});
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -63,6 +67,31 @@ export default function ProfileScreen() {
       if (missingIds.length > 0) {
         const fetched = await getShopsForIds([...new Set(missingIds)]);
         addToCache(fetched);
+      }
+
+      // Load like/comment counts for the 15 most recent activity items (best-effort)
+      const recentForCounts = [...ratings]
+        .filter(r => r.id && (r.visited_at || r.created_at))
+        .sort((a, b) => {
+          const ta = new Date(a.visited_at ?? a.created_at ?? 0).getTime();
+          const tb = new Date(b.visited_at ?? b.created_at ?? 0).getTime();
+          return tb - ta;
+        })
+        .slice(0, 15)
+        .filter(r => r.id) as (typeof ratings[0] & { id: string })[];
+      if (recentForCounts.length > 0) {
+        const [likeResults, commentResults] = await Promise.all([
+          Promise.allSettled(recentForCounts.map(r => getRatingLikes(r.id))),
+          Promise.allSettled(recentForCounts.map(r => getRatingComments(r.id))),
+        ]);
+        const likeCounts: Record<string, number> = {};
+        const commentCounts: Record<string, number> = {};
+        recentForCounts.forEach((r, idx) => {
+          if (likeResults[idx].status === 'fulfilled') likeCounts[r.id] = (likeResults[idx] as PromiseFulfilledResult<any>).value.length;
+          if (commentResults[idx].status === 'fulfilled') commentCounts[r.id] = (commentResults[idx] as PromiseFulfilledResult<any>).value.length;
+        });
+        setActivityLikeCounts(likeCounts);
+        setActivityCommentCounts(commentCounts);
       }
       if (profile) {
         setName(profile.name ?? '');
@@ -388,6 +417,22 @@ export default function ProfileScreen() {
                     {dateStr ? (
                       <Text style={styles.feedDate}>{timeAgo(dateStr)}</Text>
                     ) : null}
+                    {r.id && ((activityLikeCounts[r.id] ?? 0) > 0 || (activityCommentCounts[r.id] ?? 0) > 0) ? (
+                      <View style={styles.feedSocialRow}>
+                        {(activityLikeCounts[r.id] ?? 0) > 0 && (
+                          <View style={styles.feedSocialItem}>
+                            <Ionicons name="heart" size={12} color={Colors.error} />
+                            <Text style={styles.feedSocialCount}>{activityLikeCounts[r.id]}</Text>
+                          </View>
+                        )}
+                        {(activityCommentCounts[r.id] ?? 0) > 0 && (
+                          <View style={styles.feedSocialItem}>
+                            <Ionicons name="chatbubble" size={12} color={Colors.muted} />
+                            <Text style={styles.feedSocialCount}>{activityCommentCounts[r.id]}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : null}
                   </View>
                   {score != null ? (
                     <View style={[styles.feedBadge, { backgroundColor: overallColor(score) }]}>
@@ -512,4 +557,7 @@ const styles = StyleSheet.create({
   feedBadge: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   feedBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.white },
   feedBadgeLocked: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.foam, borderWidth: 1.5, borderColor: Colors.milk, alignItems: 'center', justifyContent: 'center' },
+  feedSocialRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3 },
+  feedSocialItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  feedSocialCount: { fontSize: 11, color: Colors.muted, fontWeight: '500' },
 });
